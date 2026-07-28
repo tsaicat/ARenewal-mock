@@ -1,0 +1,258 @@
+{
+  "info": {
+    "name": "Mock Renewal Email API",
+    "description": "Manual test collection for the PAS Auto-Renewal Mock Email API. Set {{baseUrl}} to http://localhost:3000 for local dev or your Vercel deployment URL.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "messageId", "value": "" },
+    { "key": "offerNumber", "value": "ARN-OFFER-HO2027100022-00-HO2027100022-01" },
+    { "key": "requestId", "value": "" },
+    { "key": "replyId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Send renewal offer email (60-day, generation notice)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.environment.set('messageId', body.messageId);",
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "pm.test('milestone is 60', () => pm.expect(body.milestone).to.eql(60));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/renewal-emails",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"resultingPolicyId\": \"HO2027100022-01\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"recipient\": { \"name\": \"Victor Sterling\", \"email\": \"victor.sterling@example.test\" },\n  \"subject\": \"Renewal offer for policy HO2027100022-00\",\n  \"offer\": {\n    \"offeredPremium\": 3384,\n    \"premiumChangeAmount\": 0,\n    \"premiumChangePercent\": 0,\n    \"renewalEffectiveDate\": \"2026-08-16\",\n    \"responseDueDate\": \"2026-08-01\",\n    \"noticeMilestone\": 60\n  },\n  \"responseInstructions\": {\n    \"acceptKeywords\": [\"ACCEPT\", \"YES RENEW\", \"CONFIRM RENEWAL\"],\n    \"declineKeywords\": [\"DECLINE\", \"DO NOT RENEW\", \"REJECT RENEWAL\"],\n    \"responseToken\": \"SIGNED-ONE-TIME-TOKEN\"\n  },\n  \"sentBy\": { \"actor\": \"Auto-Renewal Batch\", \"role\": \"System\" }\n}"
+        }
+      }
+    },
+    {
+      "name": "1b. Re-send same requestId (idempotency check)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('duplicate flag set, same messageId returned', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.duplicate).to.eql(true);",
+              "  pm.expect(body.messageId).to.eql(pm.environment.get('messageId'));",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/renewal-emails",
+        "description": "Run request #1 first, copy its requestId here manually (Postman variables don't survive verbatim across a raw body) to confirm the second send is deduped and returns the original message.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"PASTE-SAME-requestId-FROM-REQUEST-1-HERE\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"recipient\": { \"name\": \"Victor Sterling\", \"email\": \"victor.sterling@example.test\" },\n  \"subject\": \"Renewal offer for policy HO2027100022-00\"\n}"
+        }
+      }
+    },
+    {
+      "name": "2. Send renewal notice email (45-day)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/renewal-emails",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"resultingPolicyId\": \"HO2027100022-01\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"recipient\": { \"name\": \"Victor Sterling\", \"email\": \"victor.sterling@example.test\" },\n  \"subject\": \"Renewal notice for policy HO2027100022-00\",\n  \"offer\": {\n    \"offeredPremium\": 3384,\n    \"premiumChangeAmount\": 120,\n    \"premiumChangePercent\": 3.7,\n    \"renewalEffectiveDate\": \"2026-08-16\",\n    \"responseDueDate\": \"2026-08-01\",\n    \"noticeMilestone\": 45\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "3. Send final notice email (15-day, response required)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/renewal-emails",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"resultingPolicyId\": \"HO2027100022-01\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"recipient\": { \"name\": \"Victor Sterling\", \"email\": \"victor.sterling@example.test\" },\n  \"subject\": \"Final notice: renewal response needed for policy HO2027100022-00\",\n  \"offer\": {\n    \"offeredPremium\": 3384,\n    \"renewalEffectiveDate\": \"2026-08-16\",\n    \"responseDueDate\": \"2026-08-01\",\n    \"noticeMilestone\": 15\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "4. Privacy exclusion check (SSN/DOB/payment sent but must be stripped)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('accepted (201) despite disallowed fields present', () => pm.response.to.have.status(201));",
+              "pm.test('response body does not echo ssn/dob', () => {",
+              "  const raw = pm.response.text();",
+              "  pm.expect(raw).to.not.include('123-45-6789');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/renewal-emails",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"recipient\": { \"name\": \"Victor Sterling\", \"email\": \"victor.sterling@example.test\" },\n  \"subject\": \"Renewal offer for policy HO2027100022-00\",\n  \"customer\": {\n    \"ssn\": \"123-45-6789\",\n    \"dateOfBirth\": \"1980-01-01\",\n    \"paymentAccount\": \"XXXX-4242\"\n  },\n  \"offer\": { \"offeredPremium\": 3384 }\n}"
+        }
+      }
+    },
+    {
+      "name": "5. List sent messages (inbox)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/renewal-emails" }
+    },
+    {
+      "name": "6. Get single message detail (replies + offer state)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/messages/{{messageId}}" }
+    },
+    {
+      "name": "7. Simulate reply — ACCEPT",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('classified ACCEPT', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.classification).to.eql('ACCEPT');",
+              "  pm.expect(body.callbackStatus).to.eql('APPLIED');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/renewal-emails/{{messageId}}/replies",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"from\": \"victor.sterling@example.test\",\n  \"plainText\": \"Yes, please renew my policy. I accept the offer.\"\n}"
+        }
+      }
+    },
+    {
+      "name": "7b. Re-submit same reply (idempotency check)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/renewal-emails/{{messageId}}/replies",
+        "description": "Same body/messageId as #7 — since no replyId was supplied in #7, the server generated one; this second call generates a *new* replyId and will process as a second, distinct reply. To test true replyId-based dedupe, pass an explicit \"replyId\" in the body and repeat it here verbatim.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"replyId\": \"REPLY-IDEMPOTENCY-TEST-001\",\n  \"from\": \"victor.sterling@example.test\",\n  \"plainText\": \"Yes, please renew my policy. I accept the offer.\"\n}"
+        }
+      }
+    },
+    {
+      "name": "8. Simulate reply — DECLINE",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('classified DECLINE', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.classification).to.eql('DECLINE');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/renewal-emails/{{messageId}}/replies",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"from\": \"victor.sterling@example.test\",\n  \"plainText\": \"I found other coverage, please do not renew my policy.\"\n}"
+        }
+      }
+    },
+    {
+      "name": "9. Simulate reply — AMBIGUOUS",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('classified AMBIGUOUS', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.classification).to.eql('AMBIGUOUS');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/renewal-emails/{{messageId}}/replies",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"from\": \"victor.sterling@example.test\",\n  \"plainText\": \"The price seems high, can you call me to discuss my coverage options?\"\n}"
+        }
+      }
+    },
+    {
+      "name": "10. Resend inbound webhook (unsigned, local/dev only)",
+      "description": "Only works when RESEND_WEBHOOK_SECRET is unset on the server (dev mode). For production, register the webhook in the Resend dashboard instead of posting to this manually — real requests are svix-signed.",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/webhooks/resend",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"email.received\",\n  \"created_at\": \"2026-07-28T12:00:00.000Z\",\n  \"data\": {\n    \"email_id\": \"resend-inbound-{{$guid}}\",\n    \"from\": \"victor.sterling@example.test\",\n    \"to\": [\"arenewal+{{messageId}}@iapasapp.com\"],\n    \"subject\": \"Re: Renewal offer for policy HO2027100022-00\",\n    \"attachments\": []\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "11. Mock PAS callback target — direct call",
+      "description": "Normally invoked internally by the reply pipeline. Call directly to test the mock PAS-side gateway and its own eventId idempotency in isolation.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('status APPLIED', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.status).to.eql('APPLIED');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{baseUrl}}/api/auto-renewal/email-responses",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"eventId\": \"EMAIL-EVENT-{{$guid}}\",\n  \"eventType\": \"AUTO_RENEWAL_CUSTOMER_RESPONSE\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"customerResponse\": {\n    \"classification\": \"ACCEPT\",\n    \"pasStatus\": \"Accepted\",\n    \"confidence\": 1,\n    \"matchedPhrase\": \"accept the offer\",\n    \"receivedFrom\": \"victor.sterling@example.test\",\n    \"receivedAt\": \"2026-07-28T12:00:00.000Z\"\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "12. Audit log",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/audit" }
+    }
+  ]
+}
