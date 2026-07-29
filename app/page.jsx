@@ -176,7 +176,17 @@ export default function Page() {
                     from {r.from} · {formatDate(r.receivedAt)}
                     {r.matchedPhrase ? ` · matched "${r.matchedPhrase}"` : ""}
                   </span>
-                  <div className="body">{r.plainText}</div>
+                  <div className="body">{r.classifiedText || r.plainText}</div>
+                  {r.classifiedText && r.plainText && r.classifiedText !== r.plainText && (
+                    <details style={{ marginTop: 8 }}>
+                      <summary className="mono" style={{ fontSize: 10, color: "#6b7280", cursor: "pointer" }}>
+                        full email (quoted original included, not used for classification)
+                      </summary>
+                      <div className="body" style={{ color: "#6b7280", marginTop: 4 }}>
+                        {r.plainText}
+                      </div>
+                    </details>
+                  )}
                 </div>
               ))}
 
