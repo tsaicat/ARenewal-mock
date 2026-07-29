@@ -7,8 +7,13 @@ import { recordAudit } from "@/lib/audit";
 import { stripPrivacyFields, findPrivacyFieldsPresent } from "@/lib/privacy";
 import { setOfferState } from "@/lib/offers";
 import { newId } from "@/lib/ids";
+import { arEmailKey } from "@/lib/keyspace";
 
 export const dynamic = "force-dynamic";
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204 });
+}
 
 // POST /api/renewal-emails
 // Accepts a renewal offer payload per auto-renewal-email-contract-starter.json,
@@ -21,7 +26,7 @@ export async function POST(req) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const required = ["requestId", "offerNumber", "sourcePolicyId", "recipient", "subject"];
+  const required = ["requestId", "offerNumber", "sourcePolicyId", "customerRef", "recipient"];
   const missing = required.filter((f) => !payload[f]);
   if (missing.length) {
     return NextResponse.json(
@@ -34,10 +39,10 @@ export async function POST(req) {
   }
 
   // --- idempotency on requestId: sending the same request twice returns the original result ---
-  const idempotencyKey = `outbound-request:${payload.requestId}`;
+  const idempotencyKey = arEmailKey("outbound-request", payload.requestId);
   const isFirst = await kvSetIfAbsent(idempotencyKey, { requestId: payload.requestId, at: new Date().toISOString() });
   if (!isFirst) {
-    const priorMessageId = await kvGet(`outbound-request-result:${payload.requestId}`);
+    const priorMessageId = await kvGet(arEmailKey("outbound-request-result", payload.requestId));
     if (priorMessageId) {
       const { getMessage } = await import("@/lib/messages");
       const prior = await getMessage(priorMessageId);
@@ -51,6 +56,8 @@ export async function POST(req) {
             status: prior.status,
             acceptedAt: prior.acceptedAt,
             deliveredAt: prior.deliveredAt,
+            milestone: prior.milestone,
+            subject: prior.subject,
             duplicate: true,
           },
           { status: 200 }
@@ -63,8 +70,8 @@ export async function POST(req) {
   const privacyFieldsStripped = findPrivacyFieldsPresent(payload);
   const safePayload = stripPrivacyFields(payload);
 
-  const messageId = newId("MSG");
-  const threadId = newId("THREAD");
+  const messageId = newId("AR-EMAIL-MSG");
+  const threadId = newId("AR-EMAIL-THREAD");
   const acceptedAt = new Date().toISOString();
 
   // --- template selection (60/45/15-day) unless caller supplied a full body ---
@@ -72,16 +79,22 @@ export async function POST(req) {
   let html = safePayload.body?.html;
   let plainText = safePayload.body?.plainText;
   let milestone = safePayload.offer?.noticeMilestone ?? null;
+  const built = buildRenewalEmail({
+    sourcePolicyId: safePayload.sourcePolicyId,
+    recipient: safePayload.recipient,
+    offer: safePayload.offer || {},
+  });
 
+  // When PAS omits the body, the service owns the final subject and body.
+  // PAS may still send a subject preview for compatibility with v0.1, but
+  // it is not authoritative in server-template mode.
   if (!html || !plainText) {
-    const built = buildRenewalEmail({
-      sourcePolicyId: safePayload.sourcePolicyId,
-      recipient: safePayload.recipient,
-      offer: safePayload.offer || {},
-    });
+    subject = built.subject;
+    html = built.html;
+    plainText = built.plainText;
+    milestone = built.milestone;
+  } else {
     subject = subject || built.subject;
-    html = html || built.html;
-    plainText = plainText || built.plainText;
     milestone = milestone ?? built.milestone;
   }
 
@@ -102,6 +115,7 @@ export async function POST(req) {
     threadId,
     requestId: safePayload.requestId,
     messageType: safePayload.messageType || "AUTO_RENEWAL_OFFER",
+    integrationNamespace: safePayload.integrationNamespace || "AR_EMAIL",
     offerNumber: safePayload.offerNumber,
     sourcePolicyId: safePayload.sourcePolicyId,
     resultingPolicyId: safePayload.resultingPolicyId,
@@ -125,7 +139,7 @@ export async function POST(req) {
   };
 
   await saveMessage(message);
-  await kvSetIfAbsent(`outbound-request-result:${payload.requestId}`, messageId);
+  await kvSetIfAbsent(arEmailKey("outbound-request-result", payload.requestId), messageId);
 
   await setOfferState(safePayload.offerNumber, {
     sourcePolicyId: safePayload.sourcePolicyId,
@@ -161,6 +175,8 @@ export async function POST(req) {
       acceptedAt,
       deliveredAt,
       milestone,
+      subject,
+      integrationNamespace: safePayload.integrationNamespace || "AR_EMAIL",
       simulated: Boolean(sendResult.simulated),
     },
     { status: sendResult.ok ? 201 : 502 }

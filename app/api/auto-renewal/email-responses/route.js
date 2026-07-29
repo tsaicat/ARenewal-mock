@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { kvGet, kvSetIfAbsent } from "@/lib/store";
 import { recordAudit } from "@/lib/audit";
+import { arEmailKey } from "@/lib/keyspace";
 
 // POST /api/auto-renewal/email-responses
 //
@@ -33,10 +34,10 @@ export async function POST(req) {
 
   // Idempotent on eventId: a repeated callback must not create duplicate
   // response history or communication rows on the (simulated) PAS side.
-  const dedupeKey = `mock-pas-applied:${event.eventId}`;
+  const dedupeKey = arEmailKey("mock-pas-applied", event.eventId);
   const isFirst = await kvSetIfAbsent(dedupeKey, event);
   if (!isFirst) {
-    const prior = await kvGet(`mock-pas-result:${event.eventId}`);
+    const prior = await kvGet(arEmailKey("mock-pas-result", event.eventId));
     return NextResponse.json({ ...prior, duplicate: true }, { status: 200 });
   }
 
@@ -68,7 +69,7 @@ export async function POST(req) {
     processedAt: new Date().toISOString(),
   };
 
-  await kvSetIfAbsent(`mock-pas-result:${event.eventId}`, response);
+  await kvSetIfAbsent(arEmailKey("mock-pas-result", event.eventId), response);
   await recordAudit("CALLBACK_APPLIED", {
     eventId: event.eventId,
     offerNumber: event.offerNumber,

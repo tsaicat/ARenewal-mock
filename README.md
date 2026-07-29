@@ -157,3 +157,20 @@ npm run dev
 
 Open `http://localhost:3000` for the inbox UI, or drive everything through
 the Postman collection in `postman/`.
+
+## Shared Upstash database namespace
+
+This service may share an Upstash Redis database with the PAS report MockAPI. All keys created by this application are therefore isolated under:
+
+```text
+ar-email:v1:*
+```
+
+Examples include `ar-email:v1:message:*`, `ar-email:v1:offer:*`, `ar-email:v1:audit:log`, and `ar-email:v1:outbound-request:*`. Do not replace these with generic `message:*`, `offer:*`, `audit:*`, or `request:*` keys.
+
+The `/api/renewal-emails` route also supports browser CORS preflight for the PAS Vite application.
+
+
+## PAS outbound request ownership
+
+For the browser PAS send flow, `requestId`, `offerNumber`, `sourcePolicyId`, `customerRef`, and `recipient.email` are required. PAS sends the detected numeric milestone in `offer.noticeMilestone` (`60`, `45`, or `15`). PAS may render a local read-only preview, but it omits the final `subject` and `body`; this API selects and renders the authoritative server-side template before sending through Resend.

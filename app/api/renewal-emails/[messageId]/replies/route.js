@@ -28,7 +28,7 @@ export async function POST(req, { params }) {
     return NextResponse.json({ error: "from and plainText are required" }, { status: 400 });
   }
 
-  const replyId = payload.replyId || newId("REPLY");
+  const replyId = payload.replyId || newId("AR-EMAIL-REPLY");
 
   const result = await processReply({
     messageId,
