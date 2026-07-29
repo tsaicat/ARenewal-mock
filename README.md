@@ -58,35 +58,59 @@ without any external accounts.
 ### 2. Resend (real sending)
 
 1. In the [Resend dashboard](https://resend.com/domains), add and verify
-   `iapasapp.com` (or a subdomain, see step 3).
-2. Create an API key and set `RESEND_API_KEY`.
+   `iapasapp.com` for **sending**.
+2. Create an API key with **Full access** (not "Sending access" — the
+   inbound webhook needs to call the Receiving API too) and set
+   `RESEND_API_KEY`.
 3. Set `RESEND_SENDER=arenewal@iapasapp.com` (default already matches).
 
 ### 3. Resend Inbound (real reply receiving)
 
-Resend's inbound receiving is separate from sending, and Resend
-**strongly recommends receiving on a subdomain** (e.g. `reply.iapasapp.com`)
-rather than the root domain, to avoid conflicting with your existing MX
-records:
+Resend's inbound **receiving** is a separate capability from sending, with
+its own domain verification. Resend **strongly recommends receiving on a
+dedicated subdomain** (e.g. `reply.iapasapp.com`) rather than the root
+domain, so it doesn't conflict with `iapasapp.com`'s existing MX records —
+adding receiving to a domain that already has mail (Google Workspace,
+Outlook, etc.) would route *all* of that domain's incoming mail through
+Resend instead.
 
-1. In Resend, go to **Emails → Receiving** and add your domain/subdomain.
+1. In Resend, go to **Emails → Receiving** and add the receiving
+   domain/subdomain (e.g. `reply.iapasapp.com`).
 2. Add the MX record Resend gives you, at the **lowest priority number** —
-   otherwise inbound mail won't route to Resend.
+   otherwise inbound mail won't route to Resend. Wait until Resend shows it
+   as verified.
 3. Go to **Webhooks → Add Webhook**, point it at
    `https://<your-deployment>.vercel.app/api/webhooks/resend`, and subscribe
    to the `email.received` event only.
 4. Copy the signing secret into `RESEND_WEBHOOK_SECRET`.
+5. **Set `RESEND_REPLY_DOMAIN` to whatever domain you enabled receiving on**
+   (e.g. `reply.iapasapp.com`). This can differ from `RESEND_SENDER`'s
+   domain — that's the whole point of using a subdomain. If you skip this,
+   it silently falls back to the sending domain, and replies will bounce
+   because receiving was never enabled there.
 
 Outbound renewal emails are sent with `reply_to` set to
-`arenewal+{messageId}@iapasapp.com`. When a customer hits "Reply," that
-plus-address round-trips through the inbound webhook, which is how this app
-matches a reply back to the original message without depending on the
+`arenewal+{messageId}@{RESEND_REPLY_DOMAIN}`. When a customer hits "Reply,"
+that plus-address round-trips through the inbound webhook, which is how this
+app matches a reply back to the original message without depending on the
 customer preserving email threading headers.
 
 > Resend's `email.received` webhook payload is metadata-only (sender,
 > recipient, subject) — no body. The webhook route calls Resend's Receiving
 > API (`resend.emails.receiving.get`) to fetch the actual reply text before
-> classifying it.
+> classifying it. This is the call that needs a Full-access API key.
+
+**Confirm the setup before wiring DNS**, in this order:
+
+1. Use `POST /api/renewal-emails/{messageId}/replies` (or the "Simulate a
+   reply" box in the inbox UI) with `ACCEPT` as the body. If the register
+   updates to `Accepted`, storage, classification, and the callback loop are
+   all working — only the *real inbound webhook path* is untested.
+2. Once DNS/MX propagates and Resend shows the receiving domain as
+   verified, send a real offer email and reply to it from Gmail. Check
+   **Resend → Webhooks → \[your webhook] → Recent deliveries** to confirm
+   `email.received` actually fired; if it didn't, the MX record is the
+   first thing to recheck.
 
 If you'd rather not wait on real inbound email while testing, use
 `POST /api/renewal-emails/{messageId}/replies` (see Postman collection) —
