@@ -216,6 +216,11 @@ export default function Page() {
                 {entry.offerNumber || entry.messageId || entry.replyId || entry.eventId || ""}
                 {entry.classification ? ` · ${entry.classification}` : ""}
                 {entry.status ? ` · ${entry.status}` : ""}
+                {(entry.reason || entry.error) && (
+                  <div style={{ color: "#c99", marginTop: 4, whiteSpace: "pre-wrap" }}>
+                    {entry.reason || entry.error}
+                  </div>
+                )}
               </div>
             </div>
           ))}
