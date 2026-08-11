@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { getMessage } from "@/lib/messages";
 import { getRepliesForMessage } from "@/lib/replyProcessor";
 import { getOfferState, getOfferHistory, getOfferFamilyStates } from "@/lib/offers";
+import { secureRead } from "@/lib/routeSecurity";
+import { getAttachment } from "@/lib/attachments";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
+  const access = await secureRead(req, "read", "READ_MESSAGE");
+  if (!access.ok) return access.response;
   const { messageId } = params;
   const message = await getMessage(messageId);
   if (!message) return NextResponse.json({ error: "Message not found" }, { status: 404 });
@@ -15,5 +19,12 @@ export async function GET(_req, { params }) {
     getOfferHistory(message.offerNumber),
     getOfferFamilyStates(message.baseOfferNumber || message.offerNumber),
   ]);
-  return NextResponse.json({ message, replies, offerState, offerHistory, offerFamily: family });
+  const attachmentAvailability = await Promise.all((message.attachments || []).map(async (attachment) => ({
+    ...attachment,
+    retentionStatus: (await getAttachment(attachment.attachmentId)) ? "AVAILABLE" : "PURGED",
+  })));
+  return NextResponse.json({
+    message: { ...message, attachments: attachmentAvailability },
+    replies, offerState, offerHistory, offerFamily: family
+  });
 }

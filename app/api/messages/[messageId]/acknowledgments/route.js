@@ -1,3 +1,5 @@
+import { securePasWrite } from "@/lib/routeSecurity";
+import { classifyStorageError } from "@/lib/storageErrors";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
@@ -49,6 +51,8 @@ function acknowledgmentCopy(type, original, response) {
 }
 
 export async function POST(req, { params }) {
+  const access = await securePasWrite(req, "acknowledgment", "SEND_RESPONSE_ACKNOWLEDGMENT");
+  if (!access.ok) return access.response;
   const originalMessage = await getMessage(params.messageId);
   if (!originalMessage) return NextResponse.json({ error: "Message not found", code: "MESSAGE_NOT_FOUND" }, { status: 404 });
 
@@ -121,7 +125,8 @@ export async function POST(req, { params }) {
     await Promise.allSettled(storedAttachments.map((a) => deleteAttachment(a.attachmentId)));
     await kvDelete(requestKey);
     await kvDelete(semanticKey);
-    return NextResponse.json({ error: "Acknowledgment attachment storage failed", code: "ATTACHMENT_STORAGE_FAILED" }, { status: 500 });
+    const storageError = classifyStorageError(error);
+    return NextResponse.json({ error: storageError.message, code: storageError.code }, { status: 503 });
   }
 
   const defaults = acknowledgmentCopy(acknowledgmentType, originalMessage, responseEvent);

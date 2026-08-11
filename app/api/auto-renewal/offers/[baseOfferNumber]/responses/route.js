@@ -3,8 +3,11 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { listFamilyResponseEvents } from "@/lib/responses";
 import { getOfferFamilyStates } from "@/lib/offers";
+import { secureRead } from "@/lib/routeSecurity";
 
-export async function GET(_req, { params }) {
+export async function GET(req, { params }) {
+  const access = await secureRead(req, "read", "READ_OFFER_RESPONSE_HISTORY");
+  if (!access.ok) return access.response;
   const baseOfferNumber = decodeURIComponent(params.baseOfferNumber || "").trim();
   if (!baseOfferNumber) return NextResponse.json({ error: "baseOfferNumber is required" }, { status: 400 });
 

@@ -13,6 +13,8 @@ import {
   completeNormalCommunication,
   releaseNormalCommunication,
 } from "@/lib/communications";
+import { securePasWrite, secureRead } from "@/lib/routeSecurity";
+import { classifyStorageError } from "@/lib/storageErrors";
 import {
   AttachmentValidationError,
   attachmentRequestFingerprint,
@@ -146,6 +148,8 @@ function apiResponseFromMessage(message, duplicate = false, semanticDuplicate = 
 }
 
 export async function POST(req) {
+  const access = await securePasWrite(req, "send", "SEND_RENEWAL_EMAIL");
+  if (!access.ok) return access.response;
   let parsed;
   try {
     parsed = await parseRequest(req);
@@ -308,8 +312,9 @@ export async function POST(req) {
     await Promise.allSettled(storedAttachments.map((attachment) => deleteAttachment(attachment.attachmentId)));
     await kvDelete(idempotencyKey);
     await releaseNormalCommunication(semanticReservation.key);
-    await recordAudit("FORMS_DELIVERY_FAILED", { messageId, offerNumber: safePayload.offerNumber, error: error?.message || "Attachment storage failed" }).catch(() => {});
-    return errorResponse("ATTACHMENT_STORAGE_FAILED", "The Forms attachment could not be persisted.", 500);
+    const storageError = classifyStorageError(error);
+    await recordAudit("FORMS_DELIVERY_FAILED", { messageId, offerNumber: safePayload.offerNumber, errorCode: storageError.code }).catch(() => {});
+    return errorResponse(storageError.code, storageError.message, 503);
   }
 
   let subject = safePayload.subject;
@@ -526,7 +531,9 @@ export async function POST(req) {
   return NextResponse.json(apiResponseFromMessage(message, false, false), { status: sendResult.ok ? 201 : 502 });
 }
 
-export async function GET() {
+export async function GET(req) {
+  const access = await secureRead(req, "read", "LIST_MESSAGES");
+  if (!access.ok) return access.response;
   const messages = await listMessages(200);
   return NextResponse.json({ messages });
 }

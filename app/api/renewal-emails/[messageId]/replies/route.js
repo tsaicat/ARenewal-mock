@@ -4,8 +4,11 @@ import { NextResponse } from "next/server";
 import { getMessage } from "@/lib/messages";
 import { processReply } from "@/lib/replyProcessor";
 import { newId } from "@/lib/ids";
+import { secureQaAction } from "@/lib/routeSecurity";
 
 export async function POST(req, { params }) {
+  const access = await secureQaAction(req, "reply", "SIMULATE_CUSTOMER_REPLY");
+  if (!access.ok) return access.response;
   const { messageId } = params;
   const message = await getMessage(messageId);
   if (!message) return NextResponse.json({ error: "Message not found" }, { status: 404 });

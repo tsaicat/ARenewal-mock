@@ -6,6 +6,10 @@ const files = {
   attachments: new URL('../lib/attachments.js', import.meta.url),
   route: new URL('../app/api/renewal-emails/route.js', import.meta.url),
   config: new URL('../next.config.js', import.meta.url),
+  middleware: new URL('../middleware.js', import.meta.url),
+  security: new URL('../lib/security.js', import.meta.url),
+  login: new URL('../app/api/auth/login/route.js', import.meta.url),
+  retention: new URL('../lib/retention.js', import.meta.url),
   messages: new URL('../lib/messages.js', import.meta.url),
   offers: new URL('../lib/offers.js', import.meta.url),
   audit: new URL('../lib/audit.js', import.meta.url),
@@ -14,12 +18,20 @@ const files = {
   replyRoute: new URL('../app/api/renewal-emails/[messageId]/replies/route.js', import.meta.url),
 };
 
-test('browser POST route exposes CORS preflight and the PAS namespace header', async () => {
-  const [route, config] = await Promise.all([readFile(files.route, 'utf8'), readFile(files.config, 'utf8')]);
-  assert.match(route, /export async function OPTIONS/);
-  assert.match(config, /Access-Control-Allow-Origin/);
-  assert.match(config, /X-PAS-Integration-Namespace/);
-  assert.match(config, /GET,POST,OPTIONS/);
+test('v0.5 CORS is restricted dynamically and PAS write route is authenticated', async () => {
+  const [route, middleware, security, login] = await Promise.all([
+    readFile(files.route, 'utf8'),
+    readFile(files.middleware, 'utf8'),
+    readFile(files.security, 'utf8'),
+    readFile(files.login, 'utf8'),
+  ]);
+  assert.match(route, /securePasWrite/);
+  assert.match(middleware, /ALLOWED_ORIGINS/);
+  assert.match(middleware, /CORS_ORIGIN_DENIED/);
+  assert.match(middleware, /X-Mock-Api-Key/);
+  assert.doesNotMatch(middleware, /Access-Control-Allow-Origin.*\*/);
+  assert.match(security, /MOCK_API_KEY/);
+  assert.match(login, /httpOnly:\s*true/);
   assert.match(route, /customerRef/);
   assert.match(route, /arEmailKey\("outbound-request"/);
 });
@@ -68,7 +80,8 @@ test('Postman outbound requests match the PAS v0.2 browser contract', async () =
   const outbound = requests.filter((item) => {
     const request = item.request || {};
     const rawUrl = typeof request.url === 'string' ? request.url : request.url?.raw || '';
-    return request.method === 'POST' && request.body?.mode === 'raw' && rawUrl.replace(/\/$/, '').endsWith('/api/renewal-emails');
+    if (!(request.method === 'POST' && request.body?.mode === 'raw' && rawUrl.replace(/\/$/, '').endsWith('/api/renewal-emails'))) return false;
+    try { return JSON.parse(request.body.raw)?.messageType === 'AUTO_RENEWAL_OFFER'; } catch { return false; }
   });
   assert.ok(outbound.length >= 4);
   outbound.forEach((item) => {
@@ -104,7 +117,7 @@ test('provider submission no longer collapses Forms into final delivery', async 
   assert.doesNotMatch(route, /formsStatus === "DELIVERED"/);
 });
 
-test('v0.4 source exposes offer lineage, semantic idempotency, response history, and acknowledgments', async () => {
+test('v0.5 preserves v0.4 offer lineage, semantic idempotency, response history, and acknowledgments', async () => {
   const [route, offers, replies, webhook, ack, history, resend] = await Promise.all([
     readFile(files.route, 'utf8'),
     readFile(files.offers, 'utf8'),
@@ -143,4 +156,40 @@ test('Resend webhook uses direct signed REST flow without an SDK dependency', as
   assert.match(webhook, /\/emails\/receiving\//);
   assert.equal(JSON.parse(pkg).dependencies.resend, undefined);
   assert.equal(JSON.parse(lock).packages['node_modules/resend'], undefined);
+});
+
+
+test('v0.5 source protects reads/attachments, fails webhook verification closed, and exposes safe operations endpoints', async () => {
+  const [detail, attachment, audit, responses, webhook, health, capabilities, retention, page] = await Promise.all([
+    readFile(new URL('../app/api/messages/[messageId]/route.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app/api/messages/[messageId]/attachments/[attachmentId]/route.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app/api/audit/route.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app/api/auto-renewal/offers/[baseOfferNumber]/responses/route.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app/api/webhooks/resend/route.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app/api/health/route.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app/api/capabilities/route.js', import.meta.url), 'utf8'),
+    readFile(files.retention, 'utf8'),
+    readFile(new URL('../app/page.jsx', import.meta.url), 'utf8'),
+  ]);
+  for (const source of [detail, attachment, audit, responses]) assert.match(source, /secureRead/);
+  assert.match(attachment, /ATTACHMENT_PURGED/);
+  assert.match(webhook, /RESEND_WEBHOOK_SECRET is required in production/);
+  assert.match(webhook, /ALLOW_UNSIGNED_WEBHOOK_TEST/);
+  assert.match(health, /service.*degraded|problems/);
+  assert.match(capabilities, /authenticationRequired/);
+  assert.match(retention, /MOCK_DATA_RETENTION_DAYS|retentionDays/);
+  assert.match(page, /HttpOnly signed session cookie/);
+  assert.doesNotMatch(page, /process\.env|NEXT_PUBLIC_[A-Z_]*(?:KEY|SECRET|TOKEN)|VITE_[A-Z_]*(?:KEY|SECRET|TOKEN)/);
+});
+
+
+test('administrative purge has no unauthenticated development bypass', async () => {
+  const [security, purge] = await Promise.all([
+    readFile(new URL('../lib/security.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app/api/admin/purge/route.js', import.meta.url), 'utf8'),
+  ]);
+  assert.match(purge, /secureAdmin/);
+  assert.match(security, /MOCK_ADMIN_TOKEN/);
+  assert.doesNotMatch(security, /DEV_ADMIN/);
+  assert.match(security, /there is no unauthenticated purge bypass/);
 });

@@ -4,12 +4,15 @@ import { NextResponse } from "next/server";
 import { kvGet, kvSetIfAbsent } from "@/lib/store";
 import { recordAudit } from "@/lib/audit";
 import { arEmailKey } from "@/lib/keyspace";
+import { verifyInternalCallback } from "@/lib/internalCallback";
 
 // Mock stand-in for the PAS-side callback. It mirrors the lifecycle semantics
 // but never issues or changes an actual PAS policy.
 export async function POST(req) {
   let event;
   try { event = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
+
+  if (!verifyInternalCallback(req, event?.eventId)) return NextResponse.json({ error: "Internal callback authorization failed", code: "CALLBACK_FORBIDDEN" }, { status: 403 });
 
   const required = ["eventId", "offerNumber", "customerResponse"];
   const missing = required.filter((f) => !event[f]);

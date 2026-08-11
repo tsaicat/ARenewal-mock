@@ -7,6 +7,7 @@ import { recordAudit } from "@/lib/audit";
 import { getMessage } from "@/lib/messages";
 import { verifySvixSignature } from "@/lib/webhookSignature";
 import { applyProviderDeliveryEvent, isOutboundDeliveryEvent, providerEventIdentity } from "@/lib/delivery";
+import { explicitBoolean, isProductionMode } from "@/lib/environment";
 
 async function fetchReceivedEmail(emailId) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -37,9 +38,10 @@ async function parseAndVerify(req) {
     verifySvixSignature({ rawBody, id: svixId, timestamp: svixTimestamp, signature: svixSignature, secret });
     event = JSON.parse(rawBody);
   } else {
-    // MOCK-AR-API-07 will harden production webhook configuration. For this
-    // lifecycle prompt, preserve existing dev/test compatibility when no
-    // signing secret is configured.
+    if (isProductionMode()) throw new Error("RESEND_WEBHOOK_SECRET is required in production");
+    if (!explicitBoolean("ALLOW_UNSIGNED_WEBHOOK_TEST", false)) {
+      throw new Error("Unsigned webhook test mode is disabled");
+    }
     event = JSON.parse(rawBody);
   }
   return { event, svixId, rawBody };

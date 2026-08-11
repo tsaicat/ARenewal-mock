@@ -1,79 +1,97 @@
-# Mock Renewal Email API v0.4.0
+# Mock Auto-Renewal Email API — v0.5.0
 
-Standalone Next.js/Vercel training integration for the PAS Auto-Renewal email workflow.
+Training/QA mock for PAS Auto-Renewal email, Forms delivery, customer responses, provider delivery evidence, offer revisions, acknowledgments, and QA Inbox verification.
 
-## v0.4.0 focus
+## What v0.5.0 adds
 
-MOCK-AR-API-06 hardens lifecycle correlation and delivery truthfulness without modifying PAS:
+MOCK-AR-API-07 preserves all v0.4.0 lifecycle behavior and adds production-oriented security and operations hardening:
 
-- provider send acceptance is no longer final delivery;
-- Resend delivery/bounce/failure webhooks update stored evidence asynchronously;
-- Forms delivery remains separate from email delivery;
-- production/provider-missing requests cannot silently become delivered; explicit local simulation is labeled `SIMULATED`;
-- explicit offer-family/version/supersession lineage is supported while old clients remain compatible;
-- every customer response has a stable canonical `eventId`;
-- response intent is separate from applicability (`CURRENT`, `LATE`, `SUPERSEDED_OFFER`, `OBSOLETE_PACKAGE`, `MANUAL_REVIEW_REQUIRED`);
-- ambiguous/negated classifier language is held for manual review;
-- normal 60/45/15 sends are semantically idempotent in addition to request-ID idempotency;
-- controlled resend is explicit and audited;
-- Acceptance/Decline acknowledgment delivery is supported;
-- consolidated offer-family response history is available.
+- PAS write authentication (`MOCK_API_KEY`);
+- QA Inbox login with HttpOnly signed session cookie;
+- separate admin authorization for purge operations;
+- restricted configurable CORS (`ALLOWED_ORIGINS`);
+- production fail-closed Resend webhook verification;
+- webhook replay/idempotency preservation;
+- server-side API rate limiting;
+- explicit configurable retention (`MOCK_DATA_RETENTION_DAYS`, default 30 days);
+- authenticated Forms PDF access;
+- retention-aware `ATTACHMENT_PURGED` state;
+- safe `/api/health` and `/api/capabilities` endpoints;
+- security headers and safe PDF response headers;
+- safe storage failure codes;
+- server-side audit of unauthorized/admin/attachment events without credential logging.
 
-See `docs/MOCK_AR_API_06_CONTRACT.md` for the exact contract.
+## Preserved v0.4 lifecycle
 
-## Core endpoints
+- JSON email-only requests;
+- multipart real PDF Forms attachments;
+- provider send acceptance vs real delivery distinction;
+- `email.sent`, `email.delivered`, delayed, bounced and failed evidence;
+- immutable offer-family/version lineage;
+- canonical response event IDs;
+- late/superseded response applicability;
+- response-history endpoint;
+- requestId + semantic milestone idempotency;
+- controlled resend;
+- Acceptance/Decline acknowledgment delivery;
+- QA Inbox and PAS callbacks.
 
-```text
-POST /api/renewal-emails
-GET  /api/renewal-emails
-GET  /api/messages/{messageId}
-POST /api/renewal-emails/{messageId}/replies
-POST /api/messages/{messageId}/acknowledgments
-GET  /api/auto-renewal/offers/{baseOfferNumber}/responses
-POST /api/webhooks/resend
-GET  /api/audit
-```
-
-## Delivery lifecycle
-
-Real provider-backed send:
-
-```text
-POST accepted
-→ Email DELIVERY_PENDING
-→ Forms DELIVERY_PENDING
-→ Resend webhook
-   email.delivered        → Email DELIVERED / Forms DELIVERED
-   email.delivery_delayed → Email DELIVERY_DELAYED / Forms DELIVERY_PENDING
-   email.bounced          → Email BOUNCED / Forms FAILED
-   email.failed           → Email FAILED / Forms FAILED
-```
-
-Resend documents `email.sent` as successful API submission/attempted delivery and `email.delivered` as successful delivery to the recipient mail server. The mock follows that distinction.
-
-## Local development
+## Development
 
 ```bash
 npm install
-cp .env.example .env.local
+npm run dev
 ```
 
-For explicit local email simulation set:
+Copy `.env.example` into your environment and configure only the values you need.
+
+In local development, authentication can remain disabled unless `REQUIRE_API_AUTH=true` / `REQUIRE_QA_AUTH=true` are set. The UI clearly labels development-only security/provider exceptions. Unsigned webhook testing is disabled unless `ALLOW_UNSIGNED_WEBHOOK_TEST=true`.
+
+## Production/deployed requirements
+
+At minimum configure:
 
 ```text
-ALLOW_SIMULATED_EMAIL=true
+MOCK_ENV_MODE=production
+MOCK_API_KEY
+QA_INBOX_PASSWORD
+QA_SESSION_SECRET
+MOCK_ADMIN_TOKEN
+ALLOWED_ORIGINS
+RESEND_API_KEY
+RESEND_WEBHOOK_SECRET
+UPSTASH_REDIS_REST_URL
+UPSTASH_REDIS_REST_TOKEN
 ```
 
-Without `RESEND_API_KEY` and without this flag, outbound sending fails with provider-not-configured evidence instead of pretending external delivery occurred.
+`MOCK_API_KEY` is a server-side service credential. **Do not place it in PAS Vite/browser environment variables or IndexedDB.** PAS v7.137.13 requires a later secure gateway/proxy integration before using v0.5 production authentication.
 
-For real sending/receiving configure `RESEND_API_KEY`, `RESEND_SENDER`, `RESEND_REPLY_DOMAIN`, and `RESEND_WEBHOOK_SECRET`. Subscribe the Resend webhook to `email.sent`, `email.delivered`, `email.delivery_delayed`, `email.bounced`, `email.failed`, and `email.received`.
+## Safe discovery
 
-Use Upstash via `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` for persistent deployment storage. Local development falls back to `data/db.json`.
+```text
+GET /api/health
+GET /api/capabilities
+```
 
-## Attachments
+These endpoints intentionally contain no keys, tokens, secret values, database URLs, or provider credentials.
 
-Actual PDF bytes are validated, stored, sent, and retained with package/message correlation. Limits remain 3 PDFs / 3 MB per file / 3 MB total.
+## Attachment limits
 
-## PAS follow-up
+- PDF (`application/pdf`) only;
+- maximum 3 files;
+- maximum 3 MB per file;
+- maximum 3 MB total per request;
+- PDF signature validated;
+- SHA-256 persisted as metadata;
+- filenames sanitized;
+- actual bytes retained according to the configured data-retention lifecycle.
 
-PAS v7.137.13 remains a compatible older consumer, but a later PAS patch is required to consume asynchronous delivery states, offer lineage, response event IDs/history, and acknowledgment delivery. Do not interpret v0.4's new `DELIVERY_PENDING` state as the old immediate `DELIVERED` behavior.
+## Documentation
+
+- `docs/MOCK_AR_API_06_CONTRACT.md` — lifecycle/delivery contract introduced in v0.4.
+- `docs/MOCK_AR_API_07_SECURITY.md` — v0.5 security, CORS, rate limit, retention and operations model.
+- `docs/MOCK_AR_API_07_CONTRACT.md` — secured endpoint contract.
+- `docs/PAS_MIGRATION_AFTER_MOCK_V05.md` — required final PAS compatibility work.
+- `docs/MOCK_AR_API_07_VERIFICATION.md` — targeted verification results.
+
+This remains a training mock. It does not create legal coverage or replace a production policy administration/email platform.

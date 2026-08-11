@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "Mock Renewal Email API \u2014 v0.4 Lifecycle Truthfulness",
+    "name": "Mock Auto-Renewal Email API v0.5.0 \u2014 Secured QA Collection",
     "description": "Manual QA collection for Mock Auto-Renewal Email API v0.4. Covers JSON + multipart sending, asynchronous provider delivery evidence, offer lineage, response provenance/history, semantic milestone idempotency, controlled resend, and response acknowledgments.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -56,9 +56,378 @@
     {
       "key": "lateMessageId",
       "value": ""
+    },
+    {
+      "key": "mockApiKey",
+      "value": "<set-mock-api-key>"
+    },
+    {
+      "key": "adminKey",
+      "value": "<set-admin-key>"
+    },
+    {
+      "key": "qaPassword",
+      "value": "<set-qa-inbox-password>"
+    },
+    {
+      "key": "allowedOrigin",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "disallowedOrigin",
+      "value": "https://untrusted.example"
+    },
+    {
+      "key": "svixId",
+      "value": "msg_example"
+    },
+    {
+      "key": "svixTimestamp",
+      "value": "<unix-seconds>"
+    },
+    {
+      "key": "svixSignature",
+      "value": "v1,<valid-signature>"
     }
   ],
   "item": [
+    {
+      "name": "v0.5 Security & Operations",
+      "item": [
+        {
+          "name": "SEC-01. QA Inbox login (HttpOnly session)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "Server validates the password and returns an HttpOnly signed cookie. Postman cookie jar should retain it.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{qaPassword}}\",\n  \"user\": \"postman-qa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "SEC-02. Health \u2014 safe public diagnostics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "SEC-03. Capabilities \u2014 safe public contract",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/capabilities",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "SEC-04. Missing PAS credential \u2014 should reject",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/renewal-emails",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "In production/auth-required mode expect 401 before business processing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "SEC-05. Invalid PAS credential \u2014 should reject",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Mock-Api-Key",
+                "value": "invalid-test-key",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/renewal-emails",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "In production/auth-required mode expect 403.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "SEC-06. Authorized Inbox read with service credential",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Mock-Api-Key",
+                "value": "{{mockApiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/renewal-emails",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "SEC-07. Disallowed browser Origin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{disallowedOrigin}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Mock-Api-Key",
+                "value": "{{mockApiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/renewal-emails",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "Expect 403 CORS_ORIGIN_DENIED before route handling."
+          }
+        },
+        {
+          "name": "SEC-08. Allowed browser Origin",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{allowedOrigin}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Mock-Api-Key",
+                "value": "{{mockApiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/renewal-emails",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "Origin must be configured in ALLOWED_ORIGINS in deployed mode."
+          }
+        },
+        {
+          "name": "SEC-09. Invalid webhook signature \u2014 should reject",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "svix-id",
+                "value": "{{svixId}}",
+                "type": "text"
+              },
+              {
+                "key": "svix-timestamp",
+                "value": "{{svixTimestamp}}",
+                "type": "text"
+              },
+              {
+                "key": "svix-signature",
+                "value": "v1,invalid",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/resend",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "In production expect 401; missing production RESEND_WEBHOOK_SECRET fails closed.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"email.delivered\",\n  \"data\": {\n    \"email_id\": \"provider-example\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "SEC-10. Valid signed webhook template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "svix-id",
+                "value": "{{svixId}}",
+                "type": "text"
+              },
+              {
+                "key": "svix-timestamp",
+                "value": "{{svixTimestamp}}",
+                "type": "text"
+              },
+              {
+                "key": "svix-signature",
+                "value": "{{svixSignature}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/resend",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "Set a valid provider signature. Re-run the exact provider event to verify replay/idempotent behavior.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"email.delivered\",\n  \"data\": {\n    \"email_id\": \"provider-example\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "SEC-11. Admin purge expired records",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Mock-Admin-Key",
+                "value": "{{adminKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/purge",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"EXPIRED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "SEC-12. Rate-limit exercise",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Mock-Api-Key",
+                "value": "{{mockApiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/renewal-emails",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "Run repeatedly past the configured read window to verify HTTP 429 + Retry-After."
+          }
+        }
+      ]
+    },
     {
       "name": "1. Send renewal offer email (60-day, generation notice)",
       "event": [
@@ -85,6 +454,11 @@
           {
             "key": "X-PAS-Integration-Namespace",
             "value": "AR_EMAIL",
+            "type": "text"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
             "type": "text"
           }
         ],
@@ -122,6 +496,11 @@
             "key": "X-PAS-Integration-Namespace",
             "value": "AR_EMAIL",
             "type": "text"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
           }
         ],
         "url": "{{baseUrl}}/api/renewal-emails",
@@ -145,6 +524,11 @@
             "key": "X-PAS-Integration-Namespace",
             "value": "AR_EMAIL",
             "type": "text"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
           }
         ],
         "url": "{{baseUrl}}/api/renewal-emails",
@@ -166,6 +550,11 @@
           {
             "key": "X-PAS-Integration-Namespace",
             "value": "AR_EMAIL",
+            "type": "text"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
             "type": "text"
           }
         ],
@@ -201,6 +590,11 @@
           {
             "key": "X-PAS-Integration-Namespace",
             "value": "AR_EMAIL",
+            "type": "text"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
             "type": "text"
           }
         ],
@@ -249,6 +643,11 @@
             "key": "X-PAS-Integration-Namespace",
             "value": "AR_EMAIL",
             "type": "text"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
           }
         ],
         "url": "{{baseUrl}}/api/renewal-emails",
@@ -262,21 +661,41 @@
       "name": "5. List sent messages (inbox)",
       "request": {
         "method": "GET",
-        "url": "{{baseUrl}}/api/renewal-emails"
+        "url": "{{baseUrl}}/api/renewal-emails",
+        "header": [
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
+          }
+        ]
       }
     },
     {
       "name": "6. Get single message detail (replies + offer state)",
       "request": {
         "method": "GET",
-        "url": "{{baseUrl}}/api/messages/{{messageId}}"
+        "url": "{{baseUrl}}/api/messages/{{messageId}}",
+        "header": [
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
+          }
+        ]
       }
     },
     {
       "name": "6A. View/download Forms attachment",
       "request": {
         "method": "GET",
-        "header": [],
+        "header": [
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
+          }
+        ],
         "url": "{{baseUrl}}/api/messages/{{formsMessageId}}/attachments/{{attachmentId}}?download=1"
       }
     },
@@ -444,7 +863,14 @@
       "name": "12. Audit log",
       "request": {
         "method": "GET",
-        "url": "{{baseUrl}}/api/audit"
+        "url": "{{baseUrl}}/api/audit",
+        "header": [
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
+          }
+        ]
       }
     },
     {
@@ -459,6 +885,11 @@
           {
             "key": "X-PAS-Integration-Namespace",
             "value": "AR_EMAIL"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
           }
         ],
         "body": {
@@ -481,7 +912,13 @@
       "name": "14. Get consolidated offer response history",
       "request": {
         "method": "GET",
-        "header": [],
+        "header": [
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
+          }
+        ],
         "url": {
           "raw": "{{baseUrl}}/api/auto-renewal/offers/{{baseOfferNumber}}/responses",
           "host": [
@@ -509,6 +946,11 @@
           {
             "key": "X-PAS-Integration-Namespace",
             "value": "AR_EMAIL"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
           }
         ],
         "body": {
@@ -535,6 +977,11 @@
           {
             "key": "Content-Type",
             "value": "application/json"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
           }
         ],
         "body": {
@@ -622,6 +1069,11 @@
             "key": "X-PAS-Integration-Namespace",
             "value": "AR_EMAIL",
             "type": "text"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
           }
         ],
         "url": {
@@ -662,6 +1114,11 @@
           {
             "key": "X-PAS-Integration-Namespace",
             "value": "AR_EMAIL",
+            "type": "text"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
             "type": "text"
           }
         ],
@@ -737,6 +1194,11 @@
           {
             "key": "Content-Type",
             "value": "application/json"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}",
+            "type": "text"
           }
         ],
         "url": {
