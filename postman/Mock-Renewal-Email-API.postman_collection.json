@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Mock Renewal Email API \u2014 v0.3 Forms Delivery",
-    "description": "Manual QA collection for the PAS Auto-Renewal Mock Email API v0.3. Supports backward-compatible JSON email requests plus multipart Forms-package delivery with actual PDF attachments, package/snapshot correlation, and separate email/forms delivery evidence.",
+    "name": "Mock Renewal Email API \u2014 v0.4 Lifecycle Truthfulness",
+    "description": "Manual QA collection for Mock Auto-Renewal Email API v0.4. Covers JSON + multipart sending, asynchronous provider delivery evidence, offer lineage, response provenance/history, semantic milestone idempotency, controlled resend, and response acknowledgments.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -32,6 +32,30 @@
     {
       "key": "formsPackageSnapshotId",
       "value": "ARN-POSTMAN-1001:auto-renewal-forms:POSTMAN-S1"
+    },
+    {
+      "key": "baseOfferNumber",
+      "value": "ARN-POSTMAN-1001"
+    },
+    {
+      "key": "responseEventId",
+      "value": ""
+    },
+    {
+      "key": "originalMessageId",
+      "value": ""
+    },
+    {
+      "key": "acceptanceResponseEventId",
+      "value": ""
+    },
+    {
+      "key": "declineResponseEventId",
+      "value": ""
+    },
+    {
+      "key": "lateMessageId",
+      "value": ""
     }
   ],
   "item": [
@@ -44,6 +68,7 @@
             "exec": [
               "const body = pm.response.json();",
               "pm.environment.set('messageId', body.messageId);",
+              "pm.environment.set('originalMessageId', body.messageId);",
               "pm.test('status 201', () => pm.response.to.have.status(201));",
               "pm.test('milestone is 60', () => pm.expect(body.milestone).to.eql(60));"
             ]
@@ -66,7 +91,7 @@
         "url": "{{baseUrl}}/api/renewal-emails",
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"resultingPolicyId\": \"HO2027100022-01\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"offer\": {\n    \"offeredPremium\": 3384,\n    \"premiumChangeAmount\": 0,\n    \"premiumChangePercent\": 0,\n    \"renewalEffectiveDate\": \"2026-08-16\",\n    \"responseDueDate\": \"2026-08-01\",\n    \"noticeMilestone\": 60\n  },\n  \"responseInstructions\": {\n    \"acceptKeywords\": [\n      \"ACCEPT\",\n      \"YES RENEW\",\n      \"CONFIRM RENEWAL\"\n    ],\n    \"declineKeywords\": [\n      \"DECLINE\",\n      \"DO NOT RENEW\",\n      \"REJECT RENEWAL\"\n    ],\n    \"responseToken\": \"SIGNED-ONE-TIME-TOKEN\"\n  },\n  \"sentBy\": {\n    \"actor\": \"Auto-Renewal Batch\",\n    \"role\": \"System\"\n  },\n  \"integrationNamespace\": \"AR_EMAIL\"\n}"
+          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"resultingPolicyId\": \"HO2027100022-01\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"offer\": {\n    \"offeredPremium\": 3384,\n    \"premiumChangeAmount\": 0,\n    \"premiumChangePercent\": 0,\n    \"renewalEffectiveDate\": \"2026-08-16\",\n    \"responseDueDate\": \"2026-08-01\",\n    \"noticeMilestone\": 60\n  },\n  \"responseInstructions\": {\n    \"acceptKeywords\": [\n      \"ACCEPT\",\n      \"YES RENEW\",\n      \"CONFIRM RENEWAL\"\n    ],\n    \"declineKeywords\": [\n      \"DECLINE\",\n      \"DO NOT RENEW\",\n      \"REJECT RENEWAL\"\n    ],\n    \"responseToken\": \"SIGNED-ONE-TIME-TOKEN\"\n  },\n  \"sentBy\": {\n    \"actor\": \"Auto-Renewal Batch\",\n    \"role\": \"System\"\n  },\n  \"integrationNamespace\": \"AR_EMAIL\",\n  \"baseOfferNumber\": \"{{baseOfferNumber}}\",\n  \"offerVersion\": 1,\n  \"communicationType\": \"NOTICE\"\n}"
         }
       }
     },
@@ -103,7 +128,7 @@
         "description": "Run request #1 first, copy its requestId here manually (Postman variables don't survive verbatim across a raw body) to confirm the second send is deduped and returns the original message.",
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"requestId\": \"PASTE-SAME-requestId-FROM-REQUEST-1-HERE\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\",\n  \"customerRef\": \"922-FL-DEMO00022\"\n}"
+          "raw": "{\n  \"requestId\": \"PASTE-SAME-requestId-FROM-REQUEST-1-HERE\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"baseOfferNumber\": \"{{baseOfferNumber}}\",\n  \"offerVersion\": 1,\n  \"communicationType\": \"NOTICE\"\n}"
         }
       }
     },
@@ -125,7 +150,7 @@
         "url": "{{baseUrl}}/api/renewal-emails",
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"resultingPolicyId\": \"HO2027100022-01\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"offer\": {\n    \"offeredPremium\": 3384,\n    \"premiumChangeAmount\": 120,\n    \"premiumChangePercent\": 3.7,\n    \"renewalEffectiveDate\": \"2026-08-16\",\n    \"responseDueDate\": \"2026-08-01\",\n    \"noticeMilestone\": 45\n  },\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\"\n}"
+          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"resultingPolicyId\": \"HO2027100022-01\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"offer\": {\n    \"offeredPremium\": 3384,\n    \"premiumChangeAmount\": 120,\n    \"premiumChangePercent\": 3.7,\n    \"renewalEffectiveDate\": \"2026-08-16\",\n    \"responseDueDate\": \"2026-08-01\",\n    \"noticeMilestone\": 45\n  },\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\",\n  \"baseOfferNumber\": \"{{baseOfferNumber}}\",\n  \"offerVersion\": 1,\n  \"communicationType\": \"NOTICE\"\n}"
         }
       }
     },
@@ -147,7 +172,7 @@
         "url": "{{baseUrl}}/api/renewal-emails",
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"resultingPolicyId\": \"HO2027100022-01\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"offer\": {\n    \"offeredPremium\": 3384,\n    \"renewalEffectiveDate\": \"2026-08-16\",\n    \"responseDueDate\": \"2026-08-01\",\n    \"noticeMilestone\": 15\n  },\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\"\n}"
+          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"resultingPolicyId\": \"HO2027100022-01\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"offer\": {\n    \"offeredPremium\": 3384,\n    \"renewalEffectiveDate\": \"2026-08-16\",\n    \"responseDueDate\": \"2026-08-01\",\n    \"noticeMilestone\": 15\n  },\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\",\n  \"baseOfferNumber\": \"{{baseOfferNumber}}\",\n  \"offerVersion\": 1,\n  \"communicationType\": \"NOTICE\"\n}"
         }
       }
     },
@@ -185,7 +210,7 @@
           "formdata": [
             {
               "key": "metadata",
-              "value": "{\n  \"requestId\": \"AR-EMAIL-REQ-POSTMAN-FORMS-{{$guid}}\",\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\",\n  \"offerNumber\": \"ARN-POSTMAN-1001\",\n  \"sourcePolicyId\": \"PA2027000001-00\",\n  \"customerRef\": \"CUST-POSTMAN-1001\",\n  \"recipient\": {\n    \"name\": \"QA Customer\",\n    \"email\": \"qa.customer@example.test\"\n  },\n  \"noticeMilestone\": \"60_DAY\",\n  \"formsPackageId\": \"{{formsPackageId}}\",\n  \"formsPackageSnapshotId\": \"{{formsPackageSnapshotId}}\",\n  \"offer\": {\n    \"offeredPremium\": 1200,\n    \"premiumChangeAmount\": 50,\n    \"premiumChangePercent\": 4.35,\n    \"renewalEffectiveDate\": \"2026-10-01\",\n    \"responseDueDate\": \"2026-09-16\",\n    \"noticeMilestone\": 60\n  },\n  \"responseInstructions\": {\n    \"acceptKeywords\": [\n      \"ACCEPT\",\n      \"YES RENEW\",\n      \"CONFIRM RENEWAL\"\n    ],\n    \"declineKeywords\": [\n      \"DECLINE\",\n      \"DO NOT RENEW\",\n      \"REJECT RENEWAL\"\n    ],\n    \"responseToken\": \"AR-EMAIL-TOKEN-POSTMAN-FORMS\"\n  },\n  \"sentBy\": {\n    \"actor\": \"Auto-Renewal Batch\",\n    \"role\": \"System\"\n  }\n}",
+              "value": "{\"requestId\": \"AR-EMAIL-REQ-POSTMAN-FORMS-{{$guid}}\", \"messageType\": \"AUTO_RENEWAL_OFFER\", \"integrationNamespace\": \"AR_EMAIL\", \"offerNumber\": \"ARN-POSTMAN-1001\", \"sourcePolicyId\": \"PA2027000001-00\", \"customerRef\": \"CUST-POSTMAN-1001\", \"recipient\": {\"name\": \"QA Customer\", \"email\": \"qa.customer@example.test\"}, \"noticeMilestone\": \"60_DAY\", \"formsPackageId\": \"{{formsPackageId}}\", \"formsPackageSnapshotId\": \"{{formsPackageSnapshotId}}\", \"offer\": {\"offeredPremium\": 1200, \"premiumChangeAmount\": 50, \"premiumChangePercent\": 4.35, \"renewalEffectiveDate\": \"2026-10-01\", \"responseDueDate\": \"2026-09-16\", \"noticeMilestone\": 60}, \"responseInstructions\": {\"acceptKeywords\": [\"ACCEPT\", \"YES RENEW\", \"CONFIRM RENEWAL\"], \"declineKeywords\": [\"DECLINE\", \"DO NOT RENEW\", \"REJECT RENEWAL\"], \"responseToken\": \"AR-EMAIL-TOKEN-POSTMAN-FORMS\"}, \"sentBy\": {\"actor\": \"Auto-Renewal Batch\", \"role\": \"System\"}, \"baseOfferNumber\": \"{{baseOfferNumber}}\", \"offerVersion\": 1, \"communicationType\": \"FORMS\"}",
               "type": "text"
             },
             {
@@ -229,7 +254,7 @@
         "url": "{{baseUrl}}/api/renewal-emails",
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"customer\": {\n    \"ssn\": \"123-45-6789\",\n    \"dateOfBirth\": \"1980-01-01\",\n    \"paymentAccount\": \"XXXX-4242\"\n  },\n  \"offer\": {\n    \"offeredPremium\": 3384\n  },\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\",\n  \"customerRef\": \"922-FL-DEMO00022\"\n}"
+          "raw": "{\n  \"requestId\": \"EMAIL-REQ-{{$guid}}\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"customer\": {\n    \"ssn\": \"123-45-6789\",\n    \"dateOfBirth\": \"1980-01-01\",\n    \"paymentAccount\": \"XXXX-4242\"\n  },\n  \"offer\": {\n    \"offeredPremium\": 3384\n  },\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"baseOfferNumber\": \"{{baseOfferNumber}}\",\n  \"offerVersion\": 1,\n  \"communicationType\": \"NOTICE\"\n}"
         }
       }
     },
@@ -264,6 +289,7 @@
             "exec": [
               "pm.test('classified ACCEPT', () => {",
               "  const body = pm.response.json();",
+              "  pm.environment.set('acceptanceResponseEventId', body.eventId);",
               "  pm.expect(body.classification).to.eql('ACCEPT');",
               "  pm.expect(body.callbackStatus).to.eql('APPLIED');",
               "});"
@@ -313,6 +339,7 @@
             "exec": [
               "pm.test('classified DECLINE', () => {",
               "  const body = pm.response.json();",
+              "  pm.environment.set('declineResponseEventId', body.eventId);",
               "  pm.expect(body.classification).to.eql('DECLINE');",
               "});"
             ]
@@ -418,6 +445,316 @@
       "request": {
         "method": "GET",
         "url": "{{baseUrl}}/api/audit"
+      }
+    },
+    {
+      "name": "13. Offer v2 supersedes v1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-PAS-Integration-Namespace",
+            "value": "AR_EMAIL"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"AR-EMAIL-REQ-POSTMAN-R2\",\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\",\n  \"baseOfferNumber\": \"{{baseOfferNumber}}\",\n  \"offerNumber\": \"ARN-POSTMAN-1001-R2\",\n  \"offerVersion\": 2,\n  \"supersedesOfferNumber\": \"{{offerNumber}}\",\n  \"sourcePolicyId\": \"PA2027000001-00\",\n  \"customerRef\": \"CUST-POSTMAN-1\",\n  \"recipient\": {\n    \"name\": \"QA Customer\",\n    \"email\": \"qa@example.com\"\n  },\n  \"noticeMilestone\": \"15_DAY\",\n  \"communicationType\": \"NOTICE\",\n  \"offerExpirationDate\": \"2026-09-01T23:59:59Z\",\n  \"responseInstructions\": {\n    \"responseToken\": \"AR-EMAIL-TOKEN-R2\"\n  },\n  \"offer\": {\n    \"noticeMilestone\": 15,\n    \"offeredPremium\": 1300\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/renewal-emails",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "renewal-emails"
+          ]
+        }
+      }
+    },
+    {
+      "name": "14. Get consolidated offer response history",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/auto-renewal/offers/{{baseOfferNumber}}/responses",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "auto-renewal",
+            "offers",
+            "{{baseOfferNumber}}",
+            "responses"
+          ]
+        }
+      }
+    },
+    {
+      "name": "15. Controlled resend",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-PAS-Integration-Namespace",
+            "value": "AR_EMAIL"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"AR-EMAIL-REQ-RESEND-1\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"baseOfferNumber\": \"{{baseOfferNumber}}\",\n  \"offerVersion\": 1,\n  \"sourcePolicyId\": \"PA2027000001-00\",\n  \"customerRef\": \"CUST-POSTMAN-1\",\n  \"recipient\": {\n    \"name\": \"QA Customer\",\n    \"email\": \"qa@example.com\"\n  },\n  \"noticeMilestone\": \"60_DAY\",\n  \"communicationType\": \"NOTICE\",\n  \"resend\": true,\n  \"originalMessageId\": \"{{originalMessageId}}\",\n  \"resendReason\": \"QA controlled resend verification\",\n  \"resendActor\": {\n    \"name\": \"QA User\"\n  },\n  \"offer\": {\n    \"noticeMilestone\": 60,\n    \"offeredPremium\": 1200\n  },\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/renewal-emails",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "renewal-emails"
+          ]
+        }
+      }
+    },
+    {
+      "name": "16. Send acceptance acknowledgment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"AR-EMAIL-REQ-ACK-1\",\n  \"responseEventId\": \"{{acceptanceResponseEventId}}\",\n  \"acknowledgmentType\": \"ACCEPTANCE\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/messages/{{messageId}}/acknowledgments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "messages",
+            "{{messageId}}",
+            "acknowledgments"
+          ]
+        }
+      }
+    },
+    {
+      "name": "17. Delivery webhook \u2014 email.delivered (local unsigned example)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"email.delivered\",\n  \"created_at\": \"2026-08-11T20:00:00.000Z\",\n  \"data\": {\n    \"email_id\": \"REPLACE_WITH_PROVIDER_MESSAGE_ID\",\n    \"from\": \"Auto-Renewal <arenewal@iapasapp.com>\",\n    \"to\": [\n      \"qa@example.com\"\n    ],\n    \"subject\": \"Renewal\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/webhooks/resend",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "webhooks",
+            "resend"
+          ]
+        }
+      }
+    },
+    {
+      "name": "18. Delivery webhook \u2014 email.bounced (local unsigned example)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/webhooks/resend",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "webhooks",
+            "resend"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"email.bounced\",\n  \"created_at\": \"2026-08-11T20:05:00.000Z\",\n  \"data\": {\n    \"email_id\": \"REPLACE_WITH_PROVIDER_MESSAGE_ID\",\n    \"from\": \"Auto-Renewal <arenewal@iapasapp.com>\",\n    \"to\": [\n      \"qa@example.com\"\n    ],\n    \"subject\": \"Renewal\"\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "19. Duplicate normal milestone with different requestId",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-PAS-Integration-Namespace",
+            "value": "AR_EMAIL",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/renewal-emails",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "renewal-emails"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"EMAIL-REQ-DIFFERENT-{{$guid}}\",\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"offerNumber\": \"{{offerNumber}}\",\n  \"baseOfferNumber\": \"{{baseOfferNumber}}\",\n  \"offerVersion\": 1,\n  \"sourcePolicyId\": \"HO2027100022-00\",\n  \"customerRef\": \"922-FL-DEMO00022\",\n  \"recipient\": {\n    \"name\": \"Victor Sterling\",\n    \"email\": \"victor.sterling@example.test\"\n  },\n  \"offer\": {\n    \"offeredPremium\": 3384,\n    \"renewalEffectiveDate\": \"2026-08-16\",\n    \"noticeMilestone\": 60\n  },\n  \"noticeMilestone\": \"60_DAY\",\n  \"communicationType\": \"NOTICE\",\n  \"integrationNamespace\": \"AR_EMAIL\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('semantic duplicate does not create another normal send', () => { const b=pm.response.json(); pm.expect(b.semanticDuplicate || b.duplicate).to.be.ok; });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "20. Create explicitly expired offer for late-response check",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-PAS-Integration-Namespace",
+            "value": "AR_EMAIL",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/renewal-emails",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "renewal-emails"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"AR-EMAIL-REQ-LATE-{{$guid}}\",\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"offerNumber\": \"ARN-LATE-1001\",\n  \"baseOfferNumber\": \"ARN-LATE-1001\",\n  \"offerVersion\": 1,\n  \"sourcePolicyId\": \"HO-LATE-01\",\n  \"customerRef\": \"QA-LATE-01\",\n  \"recipient\": {\n    \"name\": \"Late Response QA\",\n    \"email\": \"late.response@example.test\"\n  },\n  \"offerExpirationDate\": \"2026-08-10T23:59:59Z\",\n  \"responseDueDate\": \"2026-08-10T18:00:00Z\",\n  \"renewalEffectiveDate\": \"2026-08-12\",\n  \"offer\": {\n    \"offeredPremium\": 1200,\n    \"noticeMilestone\": 15\n  },\n  \"noticeMilestone\": \"15_DAY\",\n  \"communicationType\": \"NOTICE\",\n  \"integrationNamespace\": \"AR_EMAIL\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const b=pm.response.json(); if (b.messageId) pm.environment.set('lateMessageId', b.messageId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "21. Late ACCEPT \u2014 preserved but not applied",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/renewal-emails/{{lateMessageId}}/replies",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "renewal-emails",
+            "{{lateMessageId}}",
+            "replies"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"from\": \"late.response@example.test\",\n  \"plainText\": \"I accept.\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('late accept held', () => { const b=pm.response.json(); pm.expect(b.normalizedDecision).to.eql('ACCEPTED'); pm.expect(b.responseApplicability).to.eql('LATE'); pm.expect(b.appliedToCurrentOffer).to.eql(false); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "22. Send decline acknowledgment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/messages/{{messageId}}/acknowledgments",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "messages",
+            "{{messageId}}",
+            "acknowledgments"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"AR-EMAIL-REQ-ACK-DECLINE-{{$guid}}\",\n  \"responseEventId\": \"{{declineResponseEventId}}\",\n  \"acknowledgmentType\": \"DECLINE\"\n}"
+        }
       }
     }
   ]

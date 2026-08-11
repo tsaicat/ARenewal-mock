@@ -27,6 +27,13 @@ function formatBytes(value) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function messageStatusLabel(message) {
+  if (message.formsDelivery?.status && message.formsDelivery.status !== "NOT_REQUESTED") {
+    return `FORMS ${message.formsDelivery.status.replaceAll("_", " ")}`;
+  }
+  return String(message.emailDeliveryStatus || message.status || "UNKNOWN").replaceAll("_", " ");
+}
+
 function Field({ label, children, mono = false }) {
   return (
     <div className="field-row">
@@ -99,7 +106,7 @@ export default function Page() {
       <div className="masthead">
         <div>
           <h1>Auto-Renewal // Mock Email Register</h1>
-          <div className="version-line">v0.3.0 · Forms package delivery enabled</div>
+          <div className="version-line">v0.4.0 · lifecycle-aware delivery & response provenance</div>
         </div>
         <div className="sub">arenewal@iapasapp.com</div>
       </div>
@@ -137,10 +144,10 @@ export default function Page() {
                     {m.attachments?.length ? ` · 📎 ${m.attachments.length}` : ""}
                   </div>
                 </div>
-                <div className="status-pill">{m.formsDelivery?.status === "DELIVERED" ? "FORMS DELIVERED" : m.status}</div>
+                <div className="status-pill">{messageStatusLabel(m)}</div>
                 <div style={{ textAlign: "right" }}>
                   <span className="stamp pending" style={{ fontSize: 10 }}>
-                    {m.resendSimulated ? "SIMULATED" : "SENT"}
+                    {m.deliveryMode || (m.resendSimulated ? "SIMULATED" : "REAL PROVIDER")}
                   </span>
                 </div>
               </div>
@@ -155,11 +162,19 @@ export default function Page() {
               <Field label="Thread ID" mono>{detail.message.threadId}</Field>
               <Field label="Request ID" mono>{detail.message.requestId}</Field>
               <Field label="Response token" mono>{detail.message.responseToken}</Field>
+              <Field label="Base offer" mono>{detail.message.baseOfferNumber || detail.message.offerNumber}</Field>
               <Field label="Offer number" mono>{detail.message.offerNumber}</Field>
+              <Field label="Offer version" mono>{detail.message.offerVersion || 1}</Field>
+              <Field label="Offer status" mono>{detail.offerState?.offerStatus || detail.message.offerStatus || "CURRENT"}</Field>
+              <Field label="Supersedes" mono>{detail.message.supersedesOfferNumber}</Field>
               <Field label="Milestone" mono>{detail.message.noticeMilestone || detail.message.milestone}</Field>
               <Field label="Recipient">{detail.message.recipient?.name} &lt;{detail.message.recipient?.email}&gt;</Field>
+              <Field label="Delivery mode" mono>{detail.message.deliveryMode || (detail.message.resendSimulated ? "SIMULATED" : "REAL_PROVIDER")}</Field>
               <Field label="Email delivery" mono>{detail.message.emailDeliveryStatus || detail.message.status}</Field>
               <Field label="Forms delivery" mono>{detail.message.formsDelivery?.status || "NOT_REQUESTED"}</Field>
+              <Field label="Provider Message ID" mono>{detail.message.providerMessageId}</Field>
+              <Field label="Provider Event" mono>{detail.message.providerDelivery?.providerEventType}</Field>
+              <Field label="Provider Event ID" mono>{detail.message.providerDelivery?.providerEventId}</Field>
               <Field label="Forms Package ID" mono>{detail.message.formsPackageId}</Field>
               <Field label="Package Snapshot ID" mono>{detail.message.formsPackageSnapshotId}</Field>
               <Field label="Current customer response">
@@ -198,10 +213,13 @@ export default function Page() {
                     from {r.from} · {formatDate(r.receivedAt)}
                     {r.matchedPhrase ? ` · matched "${r.matchedPhrase}"` : ""}
                   </span>
-                  {r.obsoletePackageResponse && (
-                    <div className="warning-box">Held: this response references an obsolete Forms package snapshot and was not applied to the current offer.</div>
+                  {r.responseApplicability !== "CURRENT" && (
+                    <div className="warning-box">Held / review: {r.responseApplicability?.replaceAll("_", " ") || "MANUAL REVIEW"}. This response was not applied to the current actionable offer.</div>
                   )}
                   <div className="body">{r.classifiedText || r.plainText}</div>
+                  <div className="attachment-meta mono">
+                    Event: {r.eventId || "—"} · Intent: {r.normalizedDecision || r.classification} · Applicability: {r.responseApplicability || "CURRENT"} · Applied: {r.appliedToCurrentOffer ? "Yes" : "No"}
+                  </div>
                   <div className="attachment-meta mono">
                     Package: {r.formsPackageId || "—"} · Snapshot: {r.formsPackageSnapshotId || "—"}
                   </div>
@@ -254,56 +272,52 @@ export default function Page() {
 
       {tab === "docs" && (
         <div className="detail-panel docs">
-          <h2>POST /api/renewal-emails</h2>
-          <p>Two backward-compatible request modes are supported.</p>
+          <h2>v0.4 API Reference</h2>
+          <p><strong>Delivery truthfulness:</strong> a successful provider send request starts as <code>DELIVERY_PENDING</code>. Only a later Resend <code>email.delivered</code> webhook can set Email/Forms to <code>DELIVERED</code>. Bounce/failure cannot remain delivered.</p>
 
-          <h3>Email only</h3>
-          <p><code>Content-Type: application/json</code> keeps the original PAS email contract unchanged.</p>
-
-          <h3>Email + Auto-Renewal Forms</h3>
-          <p><code>Content-Type: multipart/form-data</code> with one <code>metadata</code> JSON part and one or more <code>attachments</code> PDF file parts.</p>
-          <pre>{`metadata = {
-  "requestId": "AR-EMAIL-REQ-...",
-  "offerNumber": "ARN-1001",
-  "sourcePolicyId": "PA2027000001-00",
-  "customerRef": "CUST-1001",
-  "recipient": { "name": "QA Customer", "email": "qa@example.com" },
-  "noticeMilestone": "60_DAY",
-  "formsPackageId": "ARN-FORMS-ARN-1001",
-  "formsPackageSnapshotId": "ARN-1001:auto-renewal-forms:...",
-  "responseInstructions": { "responseToken": "AR-EMAIL-TOKEN-..." },
-  "offer": { "noticeMilestone": 60, "offeredPremium": 1200 }
-}
-attachments = <actual PDF bytes>`}</pre>
-
-          <h3>Attachment limits</h3>
-          <p>PDF only. Maximum 3 files, 3 MB per file, and 3 MB total. The API checks MIME type and PDF file signature, sanitizes filenames, calculates SHA-256, and stores actual file content.</p>
-
-          <h3>Successful Forms response</h3>
+          <h3>POST /api/renewal-emails</h3>
+          <p>Backward-compatible <code>application/json</code> email-only and <code>multipart/form-data</code> metadata + actual PDF attachment modes remain supported.</p>
           <pre>{`{
-  "messageId": "AR-EMAIL-MSG-...",
-  "threadId": "AR-EMAIL-THREAD-...",
   "requestId": "AR-EMAIL-REQ-...",
-  "responseToken": "AR-EMAIL-TOKEN-...",
-  "emailDeliveryStatus": "SENT",
-  "outcome": "EMAIL_SENT_FORMS_DELIVERED",
-  "formsDelivery": {
-    "status": "DELIVERED",
-    "formsPackageId": "ARN-FORMS-ARN-1001",
-    "formsPackageSnapshotId": "...",
-    "attachmentIds": ["AR-EMAIL-ATTACHMENT-..."],
-    "attachmentCount": 1,
-    "deliveredAt": "..."
-  }
+  "baseOfferNumber": "ARN-1001",
+  "offerNumber": "ARN-1001-R2",
+  "offerVersion": 2,
+  "supersedesOfferNumber": "ARN-1001",
+  "offerExpirationDate": "2026-09-01T23:59:59Z",
+  "noticeMilestone": "15_DAY",
+  "communicationType": "NOTICE",
+  "formsPackageId": "ARN-FORMS-...",
+  "formsPackageSnapshotId": "..."
 }`}</pre>
 
-          <h3>Validation / failure codes</h3>
-          <p className="mono">ATTACHMENT_REQUIRED · ATTACHMENT_TOO_LARGE · ATTACHMENT_COUNT_EXCEEDED · UNSUPPORTED_ATTACHMENT_TYPE · PACKAGE_CORRELATION_MISSING · PACKAGE_SNAPSHOT_MISMATCH · ATTACHMENT_STORAGE_FAILED · IDEMPOTENCY_CONFLICT · EMAIL_SENT_FORMS_FAILED · EMAIL_FAILED</p>
+          <h3>Initial provider-backed Forms result</h3>
+          <pre>{`{
+  "emailDeliveryStatus": "DELIVERY_PENDING",
+  "outcome": "EMAIL_SENT_FORMS_PENDING",
+  "formsDelivery": { "status": "DELIVERY_PENDING" }
+}`}</pre>
+          <p><code>email.sent</code> keeps delivery pending; <code>email.delivered</code> confirms delivery; <code>email.delivery_delayed</code>, <code>email.bounced</code>, and <code>email.failed</code> update the stored evidence asynchronously.</p>
 
-          <h3>Response correlation</h3>
-          <p>Replies remain tied to offerNumber, Forms Package ID, Forms Package Snapshot ID, responseToken, messageId, and threadId. A response to an obsolete snapshot is stored and audited but held from the current offer.</p>
+          <h3>Simulation</h3>
+          <p>No provider credential is never silently treated as real delivery. Local/test simulation requires <code>ALLOW_SIMULATED_EMAIL=true</code> and returns <code>SIMULATED</code>.</p>
+
+          <h3>Offer lineage & response provenance</h3>
+          <p>New lineage-aware clients may send <code>baseOfferNumber</code>, <code>offerVersion</code>, and <code>supersedesOfferNumber</code>. Replies return stable <code>eventId</code>, normalized decision, applicability, late/superseded/obsolete flags, and whether the response was actually applied.</p>
+
+          <h3>GET /api/auto-renewal/offers/:baseOfferNumber/responses</h3>
+          <p>Returns chronological canonical response history across an offer family and its revisions.</p>
+
+          <h3>Controlled resend</h3>
+          <p>Use the existing send endpoint with <code>resend=true</code>, <code>originalMessageId</code>, <code>resendReason</code>, and <code>resendActor</code>. Normal offer-version/milestone sends are semantically idempotent even when a different requestId is supplied.</p>
+
+          <h3>POST /api/messages/:messageId/acknowledgments</h3>
+          <p>Sends an <code>ACCEPTANCE</code> or <code>DECLINE</code> acknowledgment correlated to a canonical <code>responseEventId</code>. JSON and optional multipart PDF attachment modes are supported. The Mock canonical thread is preserved; provider-level email-client threading is not guaranteed.</p>
+
+          <h3>Attachment limits</h3>
+          <p>PDF only · maximum 3 files · 3 MB per file · 3 MB total. Actual PDF bytes are validated, SHA-256 hashed, persisted, and never exposed as Base64 in normal Inbox JSON.</p>
         </div>
       )}
+
     </div>
   );
 }

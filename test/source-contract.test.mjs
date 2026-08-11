@@ -96,12 +96,35 @@ test('Postman includes multipart Forms delivery with an actual PDF fixture', asy
   assert.match(String(attachment?.src), /renewal-forms-sample\.pdf$/);
 });
 
-test('Forms delivery cannot collapse email-sent/evidence-failed into delivered', async () => {
+test('provider submission no longer collapses Forms into final delivery', async () => {
   const route = await readFile(files.route, 'utf8');
-  assert.match(route, /EMAIL_SENT_FORMS_FAILED/);
+  assert.match(route, /EMAIL_SENT_FORMS_PENDING/);
+  assert.match(route, /DELIVERY_PENDING/);
   assert.match(route, /FORMS_DELIVERY_EVIDENCE_FAILED/);
-  assert.match(route, /formsEvidencePersisted/);
-  assert.match(route, /formsStatus === "DELIVERED"/);
+  assert.doesNotMatch(route, /formsStatus === "DELIVERED"/);
+});
+
+test('v0.4 source exposes offer lineage, semantic idempotency, response history, and acknowledgments', async () => {
+  const [route, offers, replies, webhook, ack, history, resend] = await Promise.all([
+    readFile(files.route, 'utf8'),
+    readFile(files.offers, 'utf8'),
+    readFile(files.replies, 'utf8'),
+    readFile(new URL('../app/api/webhooks/resend/route.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app/api/messages/[messageId]/acknowledgments/route.js', import.meta.url), 'utf8'),
+    readFile(new URL('../app/api/auto-renewal/offers/[baseOfferNumber]/responses/route.js', import.meta.url), 'utf8'),
+    readFile(new URL('../lib/resend.js', import.meta.url), 'utf8'),
+  ]);
+  assert.match(route, /reserveNormalCommunication/);
+  assert.match(offers, /baseOfferNumber/);
+  assert.match(offers, /SUPERSEDED/);
+  assert.match(replies, /responseApplicability/);
+  assert.match(replies, /eventId/);
+  assert.match(webhook, /email\.received/);
+  assert.match(webhook, /applyProviderDeliveryEvent/);
+  assert.match(ack, /acknowledgmentType/);
+  assert.match(history, /listFamilyResponseEvents/);
+  assert.match(resend, /ALLOW_SIMULATED_EMAIL/);
+  assert.match(resend, /EMAIL_PROVIDER_NOT_CONFIGURED/);
 });
 
 test('privacy exclusions include raw HazardHub integration payloads', async () => {
