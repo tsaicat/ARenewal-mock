@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const files = {
+  attachments: new URL('../lib/attachments.js', import.meta.url),
   route: new URL('../app/api/renewal-emails/route.js', import.meta.url),
   config: new URL('../next.config.js', import.meta.url),
   messages: new URL('../lib/messages.js', import.meta.url),
@@ -24,7 +25,7 @@ test('browser POST route exposes CORS preflight and the PAS namespace header', a
 });
 
 test('email service storage never uses generic report-MockAPI keys', async () => {
-  const sources = await Promise.all(Object.values(files).slice(2).map((url) => readFile(url, 'utf8')));
+  const sources = await Promise.all([files.messages, files.offers, files.audit, files.replies, files.callback, files.replyRoute, files.attachments].map((url) => readFile(url, 'utf8')));
   const combined = sources.join('\n');
   assert.match(combined, /arEmailKey/);
   for (const forbidden of [
@@ -67,7 +68,7 @@ test('Postman outbound requests match the PAS v0.2 browser contract', async () =
   const outbound = requests.filter((item) => {
     const request = item.request || {};
     const rawUrl = typeof request.url === 'string' ? request.url : request.url?.raw || '';
-    return request.method === 'POST' && rawUrl.replace(/\/$/, '').endsWith('/api/renewal-emails');
+    return request.method === 'POST' && request.body?.mode === 'raw' && rawUrl.replace(/\/$/, '').endsWith('/api/renewal-emails');
   });
   assert.ok(outbound.length >= 4);
   outbound.forEach((item) => {
@@ -80,4 +81,43 @@ test('Postman outbound requests match the PAS v0.2 browser contract', async () =
     assert.equal(body.body, undefined);
     assert.ok(request.header.some((header) => header.key === 'X-PAS-Integration-Namespace' && header.value === 'AR_EMAIL'));
   });
+});
+
+
+test('Postman includes multipart Forms delivery with an actual PDF fixture', async () => {
+  const collectionUrl = new URL('../postman/Mock-Renewal-Email-API.postman_collection.json', import.meta.url);
+  const collection = JSON.parse(await readFile(collectionUrl, 'utf8'));
+  const multipart = collection.item.find((item) => item.request?.body?.mode === 'formdata');
+  assert.ok(multipart, 'multipart request is missing');
+  const metadata = multipart.request.body.formdata.find((row) => row.key === 'metadata');
+  const attachment = multipart.request.body.formdata.find((row) => row.key === 'attachments');
+  assert.ok(metadata?.value.includes('formsPackageSnapshotId'));
+  assert.equal(attachment?.type, 'file');
+  assert.match(String(attachment?.src), /renewal-forms-sample\.pdf$/);
+});
+
+test('Forms delivery cannot collapse email-sent/evidence-failed into delivered', async () => {
+  const route = await readFile(files.route, 'utf8');
+  assert.match(route, /EMAIL_SENT_FORMS_FAILED/);
+  assert.match(route, /FORMS_DELIVERY_EVIDENCE_FAILED/);
+  assert.match(route, /formsEvidencePersisted/);
+  assert.match(route, /formsStatus === "DELIVERED"/);
+});
+
+test('privacy exclusions include raw HazardHub integration payloads', async () => {
+  const privacy = await readFile(new URL('../lib/privacy.js', import.meta.url), 'utf8');
+  assert.match(privacy, /"hazardHubRawResponse"/);
+});
+
+test('Resend webhook uses direct signed REST flow without an SDK dependency', async () => {
+  const [webhook, pkg, lock] = await Promise.all([
+    readFile(new URL('../app/api/webhooks/resend/route.js', import.meta.url), 'utf8'),
+    readFile(new URL('../package.json', import.meta.url), 'utf8'),
+    readFile(new URL('../package-lock.json', import.meta.url), 'utf8'),
+  ]);
+  assert.doesNotMatch(webhook, /from ["']resend["']/);
+  assert.match(webhook, /verifySvixSignature/);
+  assert.match(webhook, /\/emails\/receiving\//);
+  assert.equal(JSON.parse(pkg).dependencies.resend, undefined);
+  assert.equal(JSON.parse(lock).packages['node_modules/resend'], undefined);
 });

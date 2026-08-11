@@ -66,7 +66,12 @@ export async function POST(req, { params }) {
       classification: result.classification.classification,
       confidence: result.classification.confidence,
       matchedPhrase: result.classification.matchedPhrase,
-      callbackStatus: result.callback.result?.ok ? "APPLIED" : "PENDING",
+      formsPackageId: message.formsPackageId || null,
+      formsPackageSnapshotId: message.formsPackageSnapshotId || null,
+      responseToken: message.responseToken || message.responseInstructions?.responseToken || null,
+      obsoletePackageResponse: Boolean(result.obsoletePackageResponse),
+      appliedToCurrentOffer: result.appliedToCurrentOffer !== false,
+      callbackStatus: result.callback.result?.body?.status || (result.callback.result?.ok ? "APPLIED" : "PENDING"),
       callbackEventId: result.callback.eventId,
     },
     { status: 201 }

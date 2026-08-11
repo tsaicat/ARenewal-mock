@@ -21,7 +21,7 @@ POST /api/auto-renewal/email-responses
    (mock PAS gateway target, for now — see "Not in scope" below)
 ```
 
-## Scope (v1)
+## Scope (v0.3)
 
 | # | Feature | Where |
 |---|---|---|
@@ -35,11 +35,150 @@ POST /api/auto-renewal/email-responses
 | 8 | Audit log | `lib/audit.js`, `GET /api/audit` |
 | 9 | Postman collection | `postman/Mock-Renewal-Email-API.postman_collection.json` |
 | 10 | Privacy field stripping | `lib/privacy.js` |
+| 11 | Real Forms PDF upload + persistent attachment storage | `lib/attachments.js` |
+| 12 | Forms delivery evidence separate from email delivery | `app/api/renewal-emails/route.js` |
+| 13 | Attachment View/Download API + inbox UI | `app/api/messages/[messageId]/attachments/[attachmentId]/route.js`, `app/page.jsx` |
+| 14 | Obsolete package response hold / revision safety | `lib/replyProcessor.js` |
+| 15 | In-app API Reference | `app/page.jsx` |
 
-**Not in scope yet** (per the handoff doc): a real PAS-side send button/modal,
-and real PAS callback wiring — PAS is currently a browser-only IndexedDB app
-with no server API, so `/api/auto-renewal/email-responses` here is a
-*simulation* of what that endpoint will do once PAS exposes a real one.
+**Not in scope yet**: changing PAS itself to upload the frozen FORMS-13 package or consume the new `formsDelivery` response. This v0.3 project implements the Mock API capability first. `/api/auto-renewal/email-responses` remains a simulation of a future PAS-side inbound callback target.
+
+
+## v0.3 Forms attachment contract
+
+`POST /api/renewal-emails` now supports two backward-compatible modes:
+
+### 1. Existing email-only request
+
+```http
+Content-Type: application/json
+```
+
+The existing JSON contract remains valid and does not require an attachment.
+`messageId`, `threadId`, `requestId`, and `responseToken` remain supported.
+
+### 2. Email + generated Auto-Renewal Forms
+
+```http
+Content-Type: multipart/form-data
+```
+
+Required multipart parts:
+
+```text
+metadata     JSON string containing the normal renewal email contract
+attachments one or more actual PDF file parts
+```
+
+When files are supplied, metadata must include stable package correlation:
+
+```json
+{
+  "requestId": "AR-EMAIL-REQ-...",
+  "offerNumber": "ARN-1001",
+  "sourcePolicyId": "PA2027000001-00",
+  "customerRef": "CUST-1001",
+  "recipient": { "name": "QA Customer", "email": "qa@example.com" },
+  "noticeMilestone": "60_DAY",
+  "formsPackageId": "ARN-FORMS-ARN-1001",
+  "formsPackageSnapshotId": "ARN-1001:auto-renewal-forms:...",
+  "responseInstructions": { "responseToken": "AR-EMAIL-TOKEN-..." },
+  "offer": { "noticeMilestone": 60, "offeredPremium": 1200 }
+}
+```
+
+The service receives the actual bytes, validates that the file is a real PDF,
+sanitizes the filename, calculates SHA-256, persists the Base64 content in the
+same storage lifecycle as the message, and passes the content to Resend as an
+email attachment. Message JSON stores only safe attachment metadata; raw Base64
+is never shown in the inbox or normal message-detail API.
+
+### Attachment limits
+
+The deployed Vercel Function has a 4.5 MB request/response payload ceiling, so
+this mock intentionally uses a smaller application limit:
+
+```text
+Allowed type: application/pdf
+Maximum files: 3
+Maximum size per file: 3 MB
+Maximum combined attachment size: 3 MB
+```
+
+The limit applies before Base64 expansion and keeps both upload and View/Download
+responses below the hosting ceiling.
+
+### Delivery response
+
+A successful email containing Forms returns separate email and Forms evidence:
+
+```json
+{
+  "messageId": "AR-EMAIL-MSG-...",
+  "threadId": "AR-EMAIL-THREAD-...",
+  "requestId": "AR-EMAIL-REQ-...",
+  "responseToken": "AR-EMAIL-TOKEN-...",
+  "emailDeliveryStatus": "SENT",
+  "outcome": "EMAIL_SENT_FORMS_DELIVERED",
+  "formsDelivery": {
+    "status": "DELIVERED",
+    "formsPackageId": "ARN-FORMS-ARN-1001",
+    "formsPackageSnapshotId": "...",
+    "attachmentIds": ["AR-EMAIL-ATTACHMENT-..."],
+    "attachmentCount": 1,
+    "deliveredAt": "..."
+  }
+}
+```
+
+`formsDelivery.status = DELIVERED` is never returned merely because attachment
+metadata was received. An actual validated file must be persisted and included
+in a successful outbound send operation.
+
+### Failure and validation codes
+
+The API uses actionable codes including:
+
+```text
+ATTACHMENT_REQUIRED
+ATTACHMENT_TOO_LARGE
+ATTACHMENT_COUNT_EXCEEDED
+UNSUPPORTED_ATTACHMENT_TYPE
+PACKAGE_CORRELATION_MISSING
+PACKAGE_SNAPSHOT_MISMATCH
+ATTACHMENT_STORAGE_FAILED
+IDEMPOTENCY_CONFLICT
+REQUEST_IN_PROGRESS
+VALIDATION_FAILED
+```
+
+Email failure remains represented by `status = FAILED` / `outcome = EMAIL_FAILED`.
+If a Forms request fails before the email can be sent (for example invalid file
+or storage failure), the API does not silently drop the file and claim Forms
+were delivered.
+If the email send succeeds but the service cannot fully persist the attachment
+delivery evidence afterward, the response uses `EMAIL_SENT_FORMS_FAILED` with
+`formsDelivery.status = FAILED`; it does not downgrade that partial failure to
+Forms Delivered.
+
+### 60 / 45 / 15 and revisions
+
+Each message keeps its own `messageId`, `requestId`, and response token while
+multiple milestones may reference the same `formsPackageId` and
+`formsPackageSnapshotId`. A materially revised package uses a different snapshot
+identity and its history is not overwritten.
+
+Replies are correlated back to the exact message, offer, package ID, package
+snapshot, response token, and thread. If the same offer has since moved to a
+newer Forms snapshot, a reply to the older snapshot is stored and audited as
+`OBSOLETE_PACKAGE_RESPONSE_HELD`; it is not applied as the current offer's
+ACCEPT/DECLINE response.
+
+### QA verification fixture
+
+`postman/fixtures/renewal-forms-sample.pdf` is a real, non-sensitive PDF fixture.
+The Postman collection includes a multipart request that uploads it and a
+View/Download request for the returned attachment ID.
 
 ## Setup
 
@@ -97,7 +236,7 @@ customer preserving email threading headers.
 
 > Resend's `email.received` webhook payload is metadata-only (sender,
 > recipient, subject) — no body. The webhook route calls Resend's Receiving
-> API (`resend.emails.receiving.get`) to fetch the actual reply text before
+> Receiving REST API (`GET /emails/receiving/{email_id}`) to fetch the actual reply text before
 > classifying it. This is the call that needs a Full-access API key.
 
 **Confirm the setup before wiring DNS**, in this order:

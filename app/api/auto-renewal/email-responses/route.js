@@ -6,18 +6,9 @@ import { recordAudit } from "@/lib/audit";
 import { arEmailKey } from "@/lib/keyspace";
 
 // POST /api/auto-renewal/email-responses
-//
-// Mock stand-in for the PAS-side inbound gateway described in the
-// handoff doc's "Critical architecture gap": PAS is currently a
-// browser-only app with no server API, so this endpoint simulates what
-// a real PAS gateway would do with the AUTO_RENEWAL_CUSTOMER_RESPONSE
-// callback event — validate idempotency, "apply" the response, and
-// return the shape PAS is expected to return once it has a real one.
-//
-// This never issues a policy and never touches payment/reports/UW —
-// per the handoff doc's safety rules, an email acceptance only ever
-// changes customerResponseStatus; PAS remains the system of record for
-// everything else (§ "Safety and business rules").
+// Mock stand-in for the PAS-side inbound gateway. It never issues a policy.
+// Responses from an obsolete Forms package snapshot are explicitly HELD rather
+// than applied, preserving revised-offer history and exact package correlation.
 export async function POST(req) {
   let event;
   try {
@@ -32,8 +23,6 @@ export async function POST(req) {
     return NextResponse.json({ error: "Missing required fields", missing }, { status: 400 });
   }
 
-  // Idempotent on eventId: a repeated callback must not create duplicate
-  // response history or communication rows on the (simulated) PAS side.
   const dedupeKey = arEmailKey("mock-pas-applied", event.eventId);
   const isFirst = await kvSetIfAbsent(dedupeKey, event);
   if (!isFirst) {
@@ -41,19 +30,23 @@ export async function POST(req) {
     return NextResponse.json({ ...prior, duplicate: true }, { status: 200 });
   }
 
-  const pasStatus = event.customerResponse.pasStatus;
+  const obsoletePackageResponse = Boolean(event.resolution?.obsoletePackageResponse);
+  const requestedStatus = event.customerResponse.pasStatus;
 
-  // Mirror BRD-005 §6.6.1 issue-readiness reasons for the two statuses
-  // an email reply can actually move: Accepted and Declined. Payment is
-  // always modeled as still pending in this mock, since the email
-  // gateway never receives or reports payment state — a real PAS would
-  // recompute this from its own payment/report/UW/notice state.
+  let status = obsoletePackageResponse ? "HELD" : "APPLIED";
+  let customerResponseStatus = obsoletePackageResponse
+    ? (event.customerResponse.appliedPasStatus || "Pending")
+    : requestedStatus;
   let issueReadiness = "Not Ready";
   const issueReadinessReasons = [];
-  if (pasStatus === "Declined") {
+
+  if (obsoletePackageResponse) {
+    issueReadiness = "Blocked";
+    issueReadinessReasons.push("Customer response references an obsolete Auto-Renewal Forms package snapshot and requires review.");
+  } else if (requestedStatus === "Declined") {
     issueReadiness = "Blocked";
     issueReadinessReasons.push("Customer declined renewal.");
-  } else if (pasStatus === "Accepted") {
+  } else if (requestedStatus === "Accepted") {
     issueReadinessReasons.push("Payment is required and has not been received.");
   } else {
     issueReadinessReasons.push("Customer response is pending.");
@@ -61,19 +54,29 @@ export async function POST(req) {
 
   const response = {
     eventId: event.eventId,
-    status: "APPLIED",
+    status,
     offerNumber: event.offerNumber,
-    customerResponseStatus: pasStatus,
+    formsPackageId: event.formsPackageId || null,
+    formsPackageSnapshotId: event.formsPackageSnapshotId || null,
+    responseToken: event.responseToken || null,
+    requestedCustomerResponseStatus: requestedStatus,
+    customerResponseStatus,
+    obsoletePackageResponse,
+    appliedToCurrentOffer: !obsoletePackageResponse,
     issueReadiness,
     issueReadinessReasons,
     processedAt: new Date().toISOString(),
   };
 
   await kvSetIfAbsent(arEmailKey("mock-pas-result", event.eventId), response);
-  await recordAudit("CALLBACK_APPLIED", {
+  await recordAudit(obsoletePackageResponse ? "CALLBACK_HELD" : "CALLBACK_APPLIED", {
     eventId: event.eventId,
     offerNumber: event.offerNumber,
-    customerResponseStatus: pasStatus,
+    formsPackageId: event.formsPackageId || null,
+    formsPackageSnapshotId: event.formsPackageSnapshotId || null,
+    customerResponseStatus,
+    requestedCustomerResponseStatus: requestedStatus,
+    obsoletePackageResponse,
     mockTarget: true,
   });
 

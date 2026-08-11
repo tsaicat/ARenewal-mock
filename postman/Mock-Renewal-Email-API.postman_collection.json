@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Mock Renewal Email API \u2014 v0.2 Namespaced CORS",
-    "description": "Manual test collection for the PAS Auto-Renewal Mock Email API. Set {{baseUrl}} to http://localhost:3000 for local dev or your Vercel deployment URL.\n\nPAS browser contract: server-owned 60/45/15 templates, CORS, and shared-Upstash isolation under ar-email:v1:*",
+    "name": "Mock Renewal Email API \u2014 v0.3 Forms Delivery",
+    "description": "Manual QA collection for the PAS Auto-Renewal Mock Email API v0.3. Supports backward-compatible JSON email requests plus multipart Forms-package delivery with actual PDF attachments, package/snapshot correlation, and separate email/forms delivery evidence.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -24,6 +24,14 @@
     {
       "key": "replyId",
       "value": ""
+    },
+    {
+      "key": "formsPackageId",
+      "value": "ARN-FORMS-ARN-POSTMAN-1001"
+    },
+    {
+      "key": "formsPackageSnapshotId",
+      "value": "ARN-POSTMAN-1001:auto-renewal-forms:POSTMAN-S1"
     }
   ],
   "item": [
@@ -144,6 +152,52 @@
       }
     },
     {
+      "name": "4A. Send renewal email WITH actual Forms PDF",
+      "description": "Multipart contract. In Postman, if the bundled relative fixture is not automatically resolved, choose postman/fixtures/renewal-forms-sample.pdf in the attachments file field.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.environment.set('formsMessageId', body.messageId);",
+              "pm.environment.set('attachmentId', body.formsDelivery?.attachmentIds?.[0] || '');",
+              "pm.test('status 201', () => pm.response.to.have.status(201));",
+              "pm.test('email sent', () => pm.expect(body.emailDeliveryStatus).to.eql('SENT'));",
+              "pm.test('forms delivered', () => pm.expect(body.formsDelivery.status).to.eql('DELIVERED'));",
+              "pm.test('actual attachment correlated', () => pm.expect(body.formsDelivery.attachmentCount).to.eql(1));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-PAS-Integration-Namespace",
+            "value": "AR_EMAIL",
+            "type": "text"
+          }
+        ],
+        "url": "{{baseUrl}}/api/renewal-emails",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "metadata",
+              "value": "{\n  \"requestId\": \"AR-EMAIL-REQ-POSTMAN-FORMS-{{$guid}}\",\n  \"messageType\": \"AUTO_RENEWAL_OFFER\",\n  \"integrationNamespace\": \"AR_EMAIL\",\n  \"offerNumber\": \"ARN-POSTMAN-1001\",\n  \"sourcePolicyId\": \"PA2027000001-00\",\n  \"customerRef\": \"CUST-POSTMAN-1001\",\n  \"recipient\": {\n    \"name\": \"QA Customer\",\n    \"email\": \"qa.customer@example.test\"\n  },\n  \"noticeMilestone\": \"60_DAY\",\n  \"formsPackageId\": \"{{formsPackageId}}\",\n  \"formsPackageSnapshotId\": \"{{formsPackageSnapshotId}}\",\n  \"offer\": {\n    \"offeredPremium\": 1200,\n    \"premiumChangeAmount\": 50,\n    \"premiumChangePercent\": 4.35,\n    \"renewalEffectiveDate\": \"2026-10-01\",\n    \"responseDueDate\": \"2026-09-16\",\n    \"noticeMilestone\": 60\n  },\n  \"responseInstructions\": {\n    \"acceptKeywords\": [\n      \"ACCEPT\",\n      \"YES RENEW\",\n      \"CONFIRM RENEWAL\"\n    ],\n    \"declineKeywords\": [\n      \"DECLINE\",\n      \"DO NOT RENEW\",\n      \"REJECT RENEWAL\"\n    ],\n    \"responseToken\": \"AR-EMAIL-TOKEN-POSTMAN-FORMS\"\n  },\n  \"sentBy\": {\n    \"actor\": \"Auto-Renewal Batch\",\n    \"role\": \"System\"\n  }\n}",
+              "type": "text"
+            },
+            {
+              "key": "attachments",
+              "type": "file",
+              "src": "postman/fixtures/renewal-forms-sample.pdf"
+            }
+          ]
+        }
+      }
+    },
+    {
       "name": "4. Privacy exclusion check (SSN/DOB/payment sent but must be stripped)",
       "event": [
         {
@@ -191,6 +245,14 @@
       "request": {
         "method": "GET",
         "url": "{{baseUrl}}/api/messages/{{messageId}}"
+      }
+    },
+    {
+      "name": "6A. View/download Forms attachment",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/messages/{{formsMessageId}}/attachments/{{attachmentId}}?download=1"
       }
     },
     {
