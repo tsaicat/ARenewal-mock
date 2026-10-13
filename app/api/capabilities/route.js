@@ -9,7 +9,7 @@ export async function GET() {
   const security = securityDiagnostics();
   return NextResponse.json({
     service: "mock-auto-renewal-email-api",
-    serviceVersion: "0.5.0",
+    serviceVersion: "0.5.1",
     emailOnlyJsonSupported: true,
     multipartSupported: true,
     attachmentDeliverySupported: true,

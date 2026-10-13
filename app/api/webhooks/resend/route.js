@@ -99,11 +99,23 @@ export async function POST(req) {
 
   let fullEmail = { text: "", subject: event.data?.subject, from: event.data?.from };
   const { data, error } = await fetchReceivedEmail(emailId);
-  if (error) {
-    await recordAudit("WEBHOOK_RECEIVING_API_FAILED", { providerEventId, messageId, emailId, reason: error?.message || "Receiving API failed" });
-  } else if (data) {
-    fullEmail = data;
+  if (error || !data || (typeof data.text !== "string" && typeof data.html !== "string")) {
+    // Do not turn a provider body-fetch outage into a permanent ambiguous customer
+    // response. A non-2xx reply allows Resend to retry the signed webhook; no
+    // response event or reply-id dedupe marker has been committed yet.
+    await recordAudit("WEBHOOK_RECEIVING_API_FAILED", {
+      providerEventId,
+      messageId,
+      emailId,
+      reason: error?.message || "Receiving API returned no email body",
+    });
+    return NextResponse.json({
+      received: false,
+      code: "INBOUND_EMAIL_BODY_UNAVAILABLE",
+      error: "Inbound message content is temporarily unavailable; retry the event.",
+    }, { status: 503 });
   }
+  fullEmail = data;
 
   const result = await processReply({
     messageId,

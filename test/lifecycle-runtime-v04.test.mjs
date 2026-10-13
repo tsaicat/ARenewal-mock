@@ -251,3 +251,76 @@ test('older provider event cannot downgrade newer delivery evidence', async () =
   assert.equal(stale.stale, true);
   assert.equal((await getMessage(messageId)).emailDeliveryStatus, 'DELIVERED');
 });
+
+
+test('equal/later non-final Resend events never downgrade confirmed email and frozen Forms delivery', async () => {
+  const id = suffix();
+  const messageId = `AR-EMAIL-MSG-REGRESSION-${id}`;
+  const providerMessageId = `provider-regression-${id}`;
+  const offerNumber = `ARN-REGRESSION-${id}`;
+  const [prepared] = await prepareUploadedAttachments([upload('immutable.pdf')]);
+  const attachment = await storeAttachment(prepared, {
+    messageId, offerNumber, formsPackageId: `PKG-${id}`, formsPackageSnapshotId: `SNAP-${id}`,
+  });
+  await saveMessage({
+    messageId, threadId: `THREAD-${id}`, requestId: `REQ-${id}`,
+    offerNumber, baseOfferNumber: offerNumber, offerVersion: 1,
+    status: 'SENT', emailDeliveryStatus: 'DELIVERY_PENDING', providerMessageId,
+    attachments: [attachment], formsPackageId: `PKG-${id}`, formsPackageSnapshotId: `SNAP-${id}`,
+    formsDelivery: { status: 'DELIVERY_PENDING', attachmentIds: [attachment.attachmentId], attachmentCount: 1 },
+  });
+  const t = '2026-08-11T20:10:00.000Z';
+  await applyProviderDeliveryEvent({
+    event: { type: 'email.delivered', created_at: t, data: { email_id: providerMessageId } },
+    providerEventId: `evt-delivered-regression-${id}`,
+  });
+  const lateSent = await applyProviderDeliveryEvent({
+    event: { type: 'email.sent', created_at: t, data: { email_id: providerMessageId } },
+    providerEventId: `evt-equal-sent-${id}`,
+  });
+  const lateDelayed = await applyProviderDeliveryEvent({
+    event: { type: 'email.delivery_delayed', created_at: '2026-08-11T20:11:00.000Z', data: { email_id: providerMessageId } },
+    providerEventId: `evt-late-delayed-${id}`,
+  });
+  assert.equal(lateSent.ignored, true);
+  assert.equal(lateDelayed.ignored, true);
+  assert.equal(lateSent.emailDeliveryStatus, 'DELIVERED');
+  assert.equal(lateDelayed.emailDeliveryStatus, 'DELIVERED');
+  const current = await getMessage(messageId);
+  assert.equal(current.emailDeliveryStatus, 'DELIVERED');
+  assert.equal(current.formsDelivery.status, 'DELIVERED');
+  assert.equal(current.providerDelivery.providerEventType, 'email.delivered');
+  assert.equal((await getAttachment(attachment.attachmentId)).deliveryStatus, 'DELIVERED');
+  const duplicate = await applyProviderDeliveryEvent({
+    event: { type: 'email.sent', created_at: t, data: { email_id: providerMessageId } },
+    providerEventId: `evt-equal-sent-${id}`,
+  });
+  assert.equal(duplicate.duplicate, true);
+});
+
+test('delayed provider evidence is not reset to pending by an out-of-order send event', async () => {
+  const id = suffix();
+  const messageId = `AR-EMAIL-MSG-DELAY-${id}`;
+  const providerMessageId = `provider-delay-${id}`;
+  await saveMessage({
+    messageId, threadId: `THREAD-${id}`, requestId: `REQ-${id}`,
+    offerNumber: `ARN-${id}`, baseOfferNumber: `ARN-${id}`, offerVersion: 1,
+    status: 'SENT', emailDeliveryStatus: 'DELIVERY_PENDING', providerMessageId,
+    attachments: [], formsDelivery: { status: 'NOT_REQUESTED', attachmentCount: 0, attachmentIds: [] },
+  });
+  await applyProviderDeliveryEvent({
+    event: { type: 'email.delivery_delayed', created_at: '2026-08-11T20:09:00.000Z', data: { email_id: providerMessageId } },
+    providerEventId: `evt-delay-first-${id}`,
+  });
+  const staleSent = await applyProviderDeliveryEvent({
+    event: { type: 'email.sent', created_at: '2026-08-11T20:10:00.000Z', data: { email_id: providerMessageId } },
+    providerEventId: `evt-sent-later-${id}`,
+  });
+  assert.equal(staleSent.ignored, true);
+  assert.equal((await getMessage(messageId)).emailDeliveryStatus, 'DELIVERY_DELAYED');
+  await applyProviderDeliveryEvent({
+    event: { type: 'email.delivered', created_at: '2026-08-11T20:11:00.000Z', data: { email_id: providerMessageId } },
+    providerEventId: `evt-delivered-after-delay-${id}`,
+  });
+  assert.equal((await getMessage(messageId)).emailDeliveryStatus, 'DELIVERED');
+});

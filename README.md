@@ -1,6 +1,13 @@
-# Mock Auto-Renewal Email API — v0.5.0
+# Mock Auto-Renewal Email API — v0.5.1
 
 Training/QA mock for PAS Auto-Renewal email, Forms delivery, customer responses, provider delivery evidence, offer revisions, acknowledgments, and QA Inbox verification.
+
+## v0.5.1 — BNC-103 evidence reconciliation hardening
+
+- Ignore out-of-order `email.sent` and `email.delivery_delayed` webhooks after confirmed provider delivery or failure, even when timestamps tie or the non-final event arrives later. Do not downgrade a provider delay to `DELIVERY_PENDING` due to a late send event.
+- Retry `email.received` webhook processing with a temporary 503 if the Resend Receiving API cannot retrieve the reply body. Never permanently classify a missing body as an ambiguous customer response.
+- Keep inbound ACCEPT/DECLINE evidence, provider-delivery evidence, Forms attachment evidence, and PAS readiness separate; a Gmail reply by itself does not confirm delivery or ingestion.
+- See `docs/BNC-103-ACCEPTANCE-QA-v0.5.1.md` for deployed configuration and QA steps.
 
 ## What v0.5.0 adds
 
