@@ -1,3 +1,9 @@
+# Update — Mock API v0.6.0 (Non-Payment Cancellation notice support)
+
+This release preserves the existing Auto-Renewal API and adds `POST /api/cancellation-notices` and `GET /api/cancellation-notices/{messageId}`. **Signed provider delivery** (not Resend acceptance, local simulation or an unsigned event) is required to return evidence suitable for PAS synthetic Non-Payment scheduling. The QA Inbox now shows both Renewal and Cancellation communications. This does not perform PAS Cancellation or Billing posting. See [`docs/NPC-01-CANCELLATION-NOTICE-CONTRACT-v0.6.0.md`](docs/NPC-01-CANCELLATION-NOTICE-CONTRACT-v0.6.0.md).
+
+---
+
 # Mock Auto-Renewal Email API — v0.5.1
 
 Training/QA mock for PAS Auto-Renewal email, Forms delivery, customer responses, provider delivery evidence, offer revisions, acknowledgments, and QA Inbox verification.

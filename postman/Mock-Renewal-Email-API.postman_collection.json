@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "Mock Auto-Renewal Email API v0.5.0 \u2014 Secured QA Collection",
+    "name": "Mock PAS Communications API v0.6.0 \u2014 Renewal and Cancellation QA",
     "description": "Manual QA collection for Mock Auto-Renewal Email API v0.4. Covers JSON + multipart sending, asynchronous provider delivery evidence, offer lineage, response provenance/history, semantic milestone idempotency, controlled resend, and response acknowledgments.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -88,6 +88,10 @@
     {
       "key": "svixSignature",
       "value": "v1,<valid-signature>"
+    },
+    {
+      "key": "cancellationMessageId",
+      "value": ""
     }
   ],
   "item": [
@@ -1217,6 +1221,62 @@
           "mode": "raw",
           "raw": "{\n  \"requestId\": \"AR-EMAIL-REQ-ACK-DECLINE-{{$guid}}\",\n  \"responseEventId\": \"{{declineResponseEventId}}\",\n  \"acknowledgmentType\": \"DECLINE\"\n}"
         }
+      }
+    },
+    {
+      "name": "NPC-01. Send non-payment Cancellation notice (synthetic training)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/cancellation-notices",
+        "description": "Must be sent with genuine service authentication. Change the recipient to an approved training recipient before use. No notice is certified delivered from HTTP 201 alone.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"NPC-POSTMAN-001\",\n  \"policyId\": \"HO2026999999-00\",\n  \"customerRef\": \"ACADEMY-001\",\n  \"noticeId\": \"NPC-POSTMAN-001\",\n  \"noticeSnapshotId\": \"FROZEN-NPC-001\",\n  \"messageType\": \"NON_PAYMENT_CANCELLATION_NOTICE\",\n  \"recipient\": {\n    \"email\": \"academy@example.test\",\n    \"name\": \"Example Insured\"\n  },\n  \"subject\": \"Training non-payment notice for policy HO2026999999-00\",\n  \"body\": {\n    \"plainText\": \"This is fictional Academy notice content prepared and authorized by PAS.\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "if (pm.response.code === 201 || pm.response.code === 200) {",
+              "  const response = pm.response.json();",
+              "  pm.collectionVariables.set(\"cancellationMessageId\", response.messageId);",
+              "  pm.test(\"Not delivered from send acceptance\", () => pm.expect(response.notice).to.eql(null));",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "NPC-02. Read delivery status (poll after signed Resend webhook)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Mock-Api-Key",
+            "value": "{{mockApiKey}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/cancellation-notices/{{cancellationMessageId}}",
+        "description": "notice remains null until a signed Resend email.delivered webhook is processed. Local unsigned tests cannot certify delivery."
       }
     }
   ]

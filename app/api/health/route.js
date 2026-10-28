@@ -22,7 +22,7 @@ export async function GET() {
   if (!security.qaAuthenticationRequired) warnings.push("QA_AUTHENTICATION_DISABLED_FOR_DEVELOPMENT");
   return NextResponse.json({
     service: problems.length ? "degraded" : "ok",
-    version: "0.5.1",
+    version: "0.6.0",
     environmentMode: environmentMode(),
     storage: persistentStorageConfigured ? "configured" : `development-fallback:${storageBackend}`,
     emailProvider: emailProviderConfigured ? "configured" : "unavailable",

@@ -12,6 +12,7 @@ export async function POST(req, { params }) {
   const { messageId } = params;
   const message = await getMessage(messageId);
   if (!message) return NextResponse.json({ error: "Message not found" }, { status: 404 });
+  if (message.messageType === "NON_PAYMENT_CANCELLATION_NOTICE") return NextResponse.json({ code: "NOT_RENEWAL_MESSAGE", error: "Cancellation notices are not renewal offers." }, {status:409});
 
   let payload;
   try {

@@ -44,7 +44,7 @@ async function parseAndVerify(req) {
     }
     event = JSON.parse(rawBody);
   }
-  return { event, svixId, rawBody };
+  return { event, svixId, rawBody, signatureVerified: Boolean(secret) };
 }
 
 export async function POST(req) {
@@ -61,11 +61,11 @@ export async function POST(req) {
     return NextResponse.json({ error: "Invalid webhook signature or payload" }, { status: 401 });
   }
 
-  const { event, svixId } = parsed;
+  const { event, svixId, signatureVerified } = parsed;
   const providerEventId = providerEventIdentity({ svixId, event });
 
   if (isOutboundDeliveryEvent(event.type)) {
-    const result = await applyProviderDeliveryEvent({ event, providerEventId });
+    const result = await applyProviderDeliveryEvent({ event, providerEventId, signatureVerified });
     return NextResponse.json({ received: true, providerEventId, ...result }, { status: result.resolved === false ? 202 : 200 });
   }
 
@@ -97,6 +97,10 @@ export async function POST(req) {
     return NextResponse.json({ received: true, resolved: false, providerEventId });
   }
 
+  if (message.messageType === "NON_PAYMENT_CANCELLATION_NOTICE") {
+    await recordAudit("CANCELLATION_NOTICE_INBOUND_IGNORED", { messageId, providerEventId });
+    return NextResponse.json({ received: true, ignored: "NON_RENEWAL_MESSAGE", providerEventId });
+  }
   let fullEmail = { text: "", subject: event.data?.subject, from: event.data?.from };
   const { data, error } = await fetchReceivedEmail(emailId);
   if (error || !data || (typeof data.text !== "string" && typeof data.html !== "string")) {

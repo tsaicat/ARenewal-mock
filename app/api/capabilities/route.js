@@ -9,7 +9,10 @@ export async function GET() {
   const security = securityDiagnostics();
   return NextResponse.json({
     service: "mock-auto-renewal-email-api",
-    serviceVersion: "0.5.1",
+    serviceVersion: "0.6.0",
+    nonPaymentCancellationNoticeSupported: true,
+    verifiedCancellationDeliveryEvidenceSupported: true,
+    cancellationNoticePath: "/api/cancellation-notices",
     emailOnlyJsonSupported: true,
     multipartSupported: true,
     attachmentDeliverySupported: true,

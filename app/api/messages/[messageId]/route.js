@@ -13,6 +13,14 @@ export async function GET(req, { params }) {
   const { messageId } = params;
   const message = await getMessage(messageId);
   if (!message) return NextResponse.json({ error: "Message not found" }, { status: 404 });
+  if (message.messageType === "NON_PAYMENT_CANCELLATION_NOTICE") {
+    const attachmentAvailability = await Promise.all((message.attachments || []).map(async (attachment) => ({
+      ...attachment,
+      retentionStatus: (await getAttachment(attachment.attachmentId)) ? "AVAILABLE" : "PURGED",
+    })));
+    return NextResponse.json({ message: { ...message, attachments: attachmentAvailability },
+      replies: [], offerState: null, offerHistory: [], offerFamily: [] });
+  }
   const [replies, offerState, offerHistory, family] = await Promise.all([
     getRepliesForMessage(messageId),
     getOfferState(message.offerNumber),
