@@ -10,7 +10,7 @@ import { stripPrivacyFields, findPrivacyFieldsPresent } from '@/lib/privacy';
 import { AttachmentValidationError, attachmentRequestFingerprint, prepareUploadedAttachments,
   storeAttachment, deleteAttachment, markAttachmentDelivery } from '@/lib/attachments';
 import { validateCancellationRequest, cancellationRequestFingerprint, cancellationDeliveryStatus,
-  CANCELLATION_NOTICE_TYPE, CANCELLATION_NAMESPACE } from '@/lib/cancellationNotices';
+  CANCELLATION_NOTICE_TYPE, CANCELLATION_NAMESPACE, validateControlledCancellationResend } from '@/lib/cancellationNotices';
 import { classifyStorageError } from '@/lib/storageErrors';
 
 export const dynamic = 'force-dynamic';
@@ -58,23 +58,21 @@ export async function POST(req) {
     if (!priorId) return fail('REQUEST_IN_PROGRESS','This request is still processing.',409);
     const prior = await getMessage(priorId);
     if (!prior) return fail('MESSAGE_EXPIRED','Existing message has expired; use a new requestId.',410);
+    // Legacy requestId fingerprints do not include resend provenance. Verify it
+    // from the persisted message before returning an idempotent success.
+    if (payload.resend === true && (prior.resendOfMessageId !== payload.originalMessageId ||
+        prior.resendReason !== payload.resendReason || prior.resendActor !== payload.resendActor))
+      return fail('IDEMPOTENCY_CONFLICT', 'requestId is associated with different resend provenance.', 409);
     return NextResponse.json({ ...cancellationDeliveryStatus(prior), duplicate: true }, {status:200});
   }
 
   let original = null;
   if (payload.resend) {
     original = await getMessage(payload.originalMessageId);
-    if (!original || original.messageType !== CANCELLATION_NOTICE_TYPE || original.policyId !== payload.policyId ||
-      original.noticeId !== payload.noticeId || original.noticeSnapshotId !== payload.noticeSnapshotId ||
-      String(original.recipient?.email).toLowerCase() !== payload.recipient.email.toLowerCase()) {
+    const resendValidation = validateControlledCancellationResend(payload, original, attachmentRequestFingerprint(attachments));
+    if (!resendValidation.ok) {
       await kvDelete(requestKey);
-      return fail('RESEND_CORRELATION_MISMATCH','Original notice and resend identifiers do not match.',409);
-    }
-    if ((original.attachments?.length || 0) !== attachments.length ||
-      JSON.stringify(original.attachments?.map(a => ({fileName:a.fileName,sizeBytes:a.sizeBytes,checksumSha256:a.checksumSha256}))||[]) !==
-      JSON.stringify(attachmentRequestFingerprint(attachments))) {
-      await kvDelete(requestKey);
-      return fail('RESEND_ATTACHMENT_MISMATCH','Controlled resend must supply the same PDF evidence.',409);
+      return fail(resendValidation.error, resendValidation.message, 409);
     }
   }
   const semanticKey = arEmailKey('cancellation-snapshot', encodeURIComponent(payload.policyId), encodeURIComponent(payload.noticeSnapshotId));
@@ -84,13 +82,14 @@ export async function POST(req) {
       const current = await kvGet(semanticKey);
       const existing = current?.messageId ? await getMessage(current.messageId) : null;
       await kvDelete(requestKey);
-      if (existing) return fail('NOTICE_ALREADY_SENT','This policy and notice snapshot already have an outbound notice.',409,{messageId:existing.messageId});
+      if (existing) return fail('NOTICE_ALREADY_SENT','This policy and frozen notice already have an outbound attempt. Failed or bounced attempts require controlled resend.',409,{messageId:existing.messageId});
       return fail('NOTICE_IN_PROGRESS','This policy and notice snapshot are being processed.',409);
     }
   }
   const messageId = newId('NPC-MSG');
   const threadId = original?.threadId || newId('NPC-THREAD');
   const storedAttachments = [];
+  let messagePersisted = false;
   try {
     for (const file of attachments) storedAttachments.push(await storeAttachment(file, {
       messageId, offerNumber: null, formsPackageId: payload.formsPackageId, formsPackageSnapshotId: payload.formsPackageSnapshotId,
@@ -132,20 +131,32 @@ export async function POST(req) {
       privacyFieldsStripped:findPrivacyFieldsPresent(incoming.payload),
     };
     await saveMessage(message);
-    await kvSetIfAbsent(resultKey, messageId);
+    messagePersisted = true;
+    await kvSet(resultKey, messageId);
     if (!original) {
-      if (sent) await kvSet(semanticKey,{requestId:payload.requestId,messageId,status:'SENT'});
-      else await kvDelete(semanticKey);
+      // A failed attempt is still a real outbound attempt with a durable message.
+      // Do not permit a new untracked 'first send' for the same frozen snapshot.
+      await kvSet(semanticKey,{requestId:payload.requestId,messageId,status: sent ? 'SENT' : 'FAILED'});
     } else {
-      await updateMessage(original.messageId, {resendCount:Number(original.resendCount||0)+1,lastResentAt:stamped});
+      // The resend has its own immutable message and resendOfMessageId. If the
+      // original's count cannot be refreshed, never discard the new evidence.
+      await updateMessage(original.messageId, {resendCount:Number(original.resendCount||0)+1,lastResentAt:stamped}).catch(()=>{});
     }
     await recordAudit(sent?'CANCELLATION_NOTICE_ACCEPTED':'CANCELLATION_NOTICE_SEND_FAILED',{
       messageId, policyId:payload.policyId, noticeId:payload.noticeId, noticeSnapshotId:payload.noticeSnapshotId,
       providerMessageId:message.providerMessageId, emailDeliveryStatus, attachmentCount:attachments.length,
-      resendOfMessageId:original?.messageId||null,
-    });
+      resendOfMessageId:original?.messageId||null, resendActor: original ? payload.resendActor : null,
+    }).catch(()=>{});
     return NextResponse.json({ ...cancellationDeliveryStatus(message), duplicate:false }, {status:sent?201:502});
   } catch (error) {
+    // Once the message was persisted, the provider may already have sent its
+    // bytes: deleting its PDF/request identity would corrupt delivery lineage.
+    if (messagePersisted) {
+      await kvSet(resultKey, messageId).catch(()=>{});
+      if (!original) await kvSet(semanticKey,{requestId:payload.requestId,messageId,status:'FINALIZATION_RETRY'}).catch(()=>{});
+      await recordAudit('CANCELLATION_NOTICE_FINALIZATION_INCOMPLETE', {messageId, policyId:payload.policyId}).catch(()=>{});
+      return fail('NOTICE_FINALIZATION_INCOMPLETE','The outbound message was recorded, but some status indexes could not be finalized. Retry the same requestId; do not create a new notice.',503,{messageId});
+    }
     await Promise.allSettled(storedAttachments.map(a=>deleteAttachment(a.attachmentId)));
     await kvDelete(requestKey).catch(()=>{});
     if (!original) await kvDelete(semanticKey).catch(()=>{});

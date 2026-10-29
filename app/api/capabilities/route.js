@@ -3,15 +3,20 @@ import { ATTACHMENT_LIMITS } from "@/lib/attachments";
 import { securityDiagnostics } from "@/lib/security";
 import { retentionDays } from "@/lib/environment";
 import { RATE_LIMITS } from "@/lib/rateLimit";
+import { persistentStorageConfigured } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 export async function GET() {
   const security = securityDiagnostics();
   return NextResponse.json({
     service: "mock-auto-renewal-email-api",
-    serviceVersion: "0.6.0",
+    serviceVersion: "0.6.1",
     nonPaymentCancellationNoticeSupported: true,
     verifiedCancellationDeliveryEvidenceSupported: true,
+    // Support is code-level; this diagnostic says only whether the required
+    // delivery-related environment settings are present, not whether Resend
+    // has actually accepted or delivered a notice.
+    cancellationDeliveryPrerequisitesConfigured: Boolean(persistentStorageConfigured && process.env.RESEND_API_KEY && process.env.RESEND_WEBHOOK_SECRET && security.serviceAuthenticationConfigured),
     cancellationNoticePath: "/api/cancellation-notices",
     emailOnlyJsonSupported: true,
     multipartSupported: true,

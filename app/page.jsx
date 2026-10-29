@@ -92,7 +92,7 @@ export default function Page() {
 
   if (!session) return <div className="app"><div className="empty dark-empty">Loading QA access…</div></div>;
   if (!session.authenticated) {
-    return <div className="app"><div className="masthead"><div><h1>PAS // Mock Communications Register</h1><div className="version-line">v0.6.0 · secured QA operations</div></div></div>
+    return <div className="app"><div className="masthead"><div><h1>PAS // Mock Communications Register</h1><div className="version-line">v0.6.1 · secured QA operations</div></div></div>
       <div className="login-panel"><h2>QA Inbox Sign In</h2><p>This deployed Inbox is protected. Enter the configured QA password; the server returns an HttpOnly signed session cookie.</p>
         <form onSubmit={login}><input className="mono form-control" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="QA Inbox password" autoComplete="current-password"/><button className="tab active" type="submit">Sign In</button></form>
         {authError && <div className="warning-box">{authError}</div>}
@@ -101,7 +101,7 @@ export default function Page() {
   }
 
   return <div className="app">
-    <div className="masthead"><div><h1>PAS // Mock Communications Register</h1><div className="version-line">v0.6.0 · secure retention & QA operations</div></div><div className="sub">arenewal@iapasapp.com</div></div>
+    <div className="masthead"><div><h1>PAS // Mock Communications Register</h1><div className="version-line">v0.6.1 · secure retention & QA operations</div></div><div className="sub">arenewal@iapasapp.com</div></div>
     {(health?.warnings || []).map((warning) => <div className="warning-box" key={warning}>{warning.replaceAll("_", " ")}</div>)}
     <div className="tabs">
       <button className={`tab ${tab === "inbox" ? "active" : ""}`} onClick={() => setTab("inbox")}>Inbox</button>

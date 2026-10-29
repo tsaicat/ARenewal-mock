@@ -6,7 +6,7 @@ import { processReply } from "@/lib/replyProcessor";
 import { recordAudit } from "@/lib/audit";
 import { getMessage } from "@/lib/messages";
 import { verifySvixSignature } from "@/lib/webhookSignature";
-import { applyProviderDeliveryEvent, isOutboundDeliveryEvent, providerEventIdentity } from "@/lib/delivery";
+import { applyProviderDeliveryEvent, isOutboundDeliveryEvent, providerEventIdentity, outboundWebhookHttpStatus } from "@/lib/delivery";
 import { explicitBoolean, isProductionMode } from "@/lib/environment";
 
 async function fetchReceivedEmail(emailId) {
@@ -66,7 +66,7 @@ export async function POST(req) {
 
   if (isOutboundDeliveryEvent(event.type)) {
     const result = await applyProviderDeliveryEvent({ event, providerEventId, signatureVerified });
-    return NextResponse.json({ received: true, providerEventId, ...result }, { status: result.resolved === false ? 202 : 200 });
+    return NextResponse.json({ received: result.resolved !== false, providerEventId, ...result }, { status: outboundWebhookHttpStatus(result) });
   }
 
   if (event.type !== "email.received") {

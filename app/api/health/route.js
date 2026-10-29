@@ -22,11 +22,12 @@ export async function GET() {
   if (!security.qaAuthenticationRequired) warnings.push("QA_AUTHENTICATION_DISABLED_FOR_DEVELOPMENT");
   return NextResponse.json({
     service: problems.length ? "degraded" : "ok",
-    version: "0.6.0",
+    version: "0.6.1",
     environmentMode: environmentMode(),
     storage: persistentStorageConfigured ? "configured" : `development-fallback:${storageBackend}`,
     emailProvider: emailProviderConfigured ? "configured" : "unavailable",
     webhookVerification: webhookVerificationConfigured ? "configured" : "unavailable",
+    cancellationDeliveryPrerequisitesConfigured: Boolean(persistentStorageConfigured && emailProviderConfigured && webhookVerificationConfigured && security.serviceAuthenticationConfigured),
     authentication: security.authenticationRequired ? "required" : "development-compatibility",
     retentionDays: retentionDays(),
     problems,

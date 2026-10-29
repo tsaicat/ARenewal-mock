@@ -1,3 +1,17 @@
+# Update — Mock Email API v0.6.1 (PAS integration audit correction)
+
+Compatible with **PAS v7.432.1**. This patch strengthens the existing Non-Payment Cancellation notice delivery/resend endpoint without changing the Auto-Renewal wire contract:
+
+- Controlled resends are allowed only after a failed/bounced provider attempt and must preserve the original policy, recipient, subject, text, Forms package and exact PDF bytes.
+- A failed original send still reserves its notice snapshot and requires an audited controlled resend; a new requestId cannot silently create an untracked first send.
+- A signed provider webhook that races the message save returns a retryable **503** instead of a successful 202 acknowledgment. Provider timestamps for Cancellation evidence must be explicit and timezone-aware.
+- Once a message is persisted, an audit/index-finalization problem cannot erase its stored attachment evidence. Public `/api/health` and `/api/capabilities` show whether delivery prerequisites are configured, without showing secrets.
+- See [`docs/MOCK-v0.6.1-PAS-v7.432.1-INTEGRATION-AUDIT-FIX-QA.md`](docs/MOCK-v0.6.1-PAS-v7.432.1-INTEGRATION-AUDIT-FIX-QA.md) for tests, deployment and remaining limitations.
+
+**No live Resend delivery or Vercel browser certification is claimed.** Mock authenticates PAS as a service; the PAS Underwriter access grant is checked by the PAS server, not independently verified by Mock. This remains an Academy application, not a production insurer authorization boundary.
+
+---
+
 # Update — Mock API v0.6.0 (Non-Payment Cancellation notice support)
 
 This release preserves the existing Auto-Renewal API and adds `POST /api/cancellation-notices` and `GET /api/cancellation-notices/{messageId}`. **Signed provider delivery** (not Resend acceptance, local simulation or an unsigned event) is required to return evidence suitable for PAS synthetic Non-Payment scheduling. The QA Inbox now shows both Renewal and Cancellation communications. This does not perform PAS Cancellation or Billing posting. See [`docs/NPC-01-CANCELLATION-NOTICE-CONTRACT-v0.6.0.md`](docs/NPC-01-CANCELLATION-NOTICE-CONTRACT-v0.6.0.md).
